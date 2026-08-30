@@ -1,285 +1,205 @@
 ---
 name: video-generator
 description: >
-  Execute production video generation from shot-specifier outputs through the Higgsfield
-  Model Context Protocol (MCP). Use when prompts, storyboard frames, media roles, model
-  routing, Higgsfield MCP uploads, generate_video calls, status polling, retakes, resume
-  behaviour, or final assembly order are needed. Bridges
-  structured [TAG] prompt files to model-native plain text prompts, validates model
-  duration/aspect constraints, decomposes key-frame shots into supported start/end image
-  clips, tracks uploaded media and job IDs, and writes generation logs.
+  Execute resumable video-generation jobs from shot-specifier manifests through either
+  local ComfyUI workflows or the Higgsfield MCP. Use when validating provider
+  capabilities, binding prompts and reference media, submitting and monitoring jobs,
+  retrieving local clips, handling retakes, recording provenance, or writing final
+  assembly order.
 ---
 
 # Video Generator
 
-Turns a completed shot-specifier handoff into generated video clips through the
-**Higgsfield Model Context Protocol (MCP)**. This skill begins only after
-`shot-specifier` Phase 8 has produced prompt files, storyboard frames, model routing,
-generation strategies, explicit audio-generation preferences, and
-`prompts/manifest.md`. `scene-inventory-extractor-v2` stops at its Phase 13 handoff and
-is not a direct input to production video generation.
+Turn a completed `shot-specifier` handoff into reviewed local video files. This skill
+owns the operational gap between “prompt written” and “clip exists on disk”: provider
+discovery, input binding, submission, monitoring, output retrieval, verification,
+retakes, resume state, and assembly order.
 
-Do not use this skill for image generation; use `nanobanana` through
-`scene-inventory-extractor-v2` or `shot-specifier` for that. Do not backfill missing
-scene analysis or shot direction here; hand back to `scene-inventory-extractor-v2` or
-`shot-specifier` when upstream fields are absent.
+Do not generate missing storyboard images here. Return incomplete image work to
+`nanobanana` and incomplete scene or shot planning to the upstream skill that owns it.
 
-This skill owns the operational gap between "prompt written" and "clip exists on disk":
-resolve local paths, upload or register media, cache returned handles, submit jobs, poll
-until terminal status, download outputs, record retakes, and write assembly order. A shot
-is not complete until a local video file exists or a blocker is recorded.
+## Provider selection
 
-The job is to be boringly competent: choose an approved Higgsfield video model, pass the
-right images in the right roles, submit resumable jobs, and leave enough state that a
-later agent can continue without guessing.
+Use the provider named by the manifest or explicitly chosen by the user:
 
-## Read Before Running
+- `comfyui`: local or authenticated ComfyUI workflow execution;
+- `higgsfield`: Higgsfield MCP generation.
 
-- For execution validation, live-schema constraints, default overrides, and empirical
-  output checks, read [references/model-routing.md](./references/model-routing.md).
-  Model choice and model-native prompt ordering are owned upstream by
-  `shot-specifier/references/model-routing.md`; do not re-route shots here unless the
-  manifest is being explicitly repaired.
-- For Seedance 2.0-specific multimodal reference planning, prompt structure, duration
-  defaults, quality/speed decisions, and troubleshooting, load `seedance-2-deep-dive`
-  whenever a job uses `seedance_2_0`.
-- For Kling 3.0-specific shot structure, camera language, Elements, Motion Control,
-  native audio/dialogue, product prompting, and troubleshooting, load
-  `kling-3-0-deep-dive` whenever a job uses `kling3_0`.
-- For converting structured `[TAG]` prompt files into model-native prompt strings, read
-  [references/prompt-flattening.md](./references/prompt-flattening.md).
-- For shots with key frames, read
-  [references/key-frame-decomposition.md](./references/key-frame-decomposition.md).
-- For media uploads and job state, read
+If neither is named, prefer a reachable local ComfyUI instance whose installed nodes,
+models, and workflows satisfy the shot. Otherwise ask for a provider decision. Never
+silently switch providers after jobs have started, and never route a local workflow
+through paid Comfy partner nodes without explicit approval.
+
+Provider choice is per shot. A project may mix providers, but every log row must retain
+the actual provider, model, workflow, and job identifier.
+
+## Read before running
+
+- For ComfyUI discovery, workflow validation, queueing, output retrieval, and the known
+  MiniMax H3/LTX patterns, read [references/comfyui.md](./references/comfyui.md).
+- For Higgsfield uploads and state, read
   [references/media-upload-and-state.md](./references/media-upload-and-state.md).
-- For what Firecrawl confirmed about the public Higgsfield MCP and SDK surfaces, read
-  [references/higgsfield-mcp-research.md](./references/higgsfield-mcp-research.md).
+- For Higgsfield live-schema constraints, read
+  [references/model-routing.md](./references/model-routing.md).
+- For model-native prompt reconstruction, read
+  [references/prompt-flattening.md](./references/prompt-flattening.md).
+- For key-frame subdivision, read
+  [references/key-frame-decomposition.md](./references/key-frame-decomposition.md).
+- Load `seedance-2-deep-dive` or `kling-3-0-deep-dive` only for matching Higgsfield
+  routes.
 
-## Required Inputs
+## Required inputs
 
-- `prompts/manifest.md` from `shot-specifier` with
-  shot order, duration, model routing, prompt file, frame paths, aspect ratio,
-  target resolution, resolution parameter, generation strategy, review-gate metadata,
-  model-overrides, count, required-reference audit, and explicit audio-generation
-  preferences.
-- One prompt file per shot containing both the structured `## Prompt` block and a
-  `## Generation Prompt` block.
-- Start and end frames for every generation clip.
-- Key frames only when accompanied by a split plan; Higgsfield video generation accepts
-  start and end anchors, not mid-clip key-frame anchors.
-- Continuity inventory or the shot-specifier reference audit when available. The
-  consistency pass is actionable input: any continuity-critical reference or prompt
-  constraint it names must be present in the job or explicitly blocked.
+The handoff must contain `prompts/manifest.md`, one prompt file per shot, and all local
+files named by each row. Each row needs:
 
-## Tool And Model Rules
+| Field | Meaning |
+| --- | --- |
+| `provider` | `comfyui` or `higgsfield` |
+| `model` | Provider model alias or exact resolved model |
+| `strategy` | `text_to_video`, `image_to_video`, `start_end_image`, `reference_to_video`, `multi_shot`, or `motion_control` |
+| `duration` | Desired duration; validate against the selected route |
+| `fps` | Desired or route-native frame rate |
+| `aspect` | Desired display aspect ratio |
+| `target_resolution` | Intended pixel dimensions |
+| `prompt_file` | Project-relative prompt file |
+| `required_refs` | Continuity-critical inputs and their semantic roles |
+| `audio` | Generated, supplied, none, and mute intent |
+| `review_gate` | `required` or `optional` |
+| `count` | Number of requested takes, normally `1` |
 
-Use the connected **Higgsfield MCP** for production video generation. The MCP endpoint
-documented by Higgsfield is `https://mcp.higgsfield.ai`; authenticate through the
-connector's Higgsfield account flow, then inspect the live MCP tools before submitting
-work.
+For ComfyUI, also require a versioned `workflow` path or a resolvable workflow profile
+plus its input-binding map. For Higgsfield, require the resolution hint and model
+overrides used by its live schema.
 
-Route to these recommended Higgsfield video models unless the live MCP schema says they
-are unavailable:
+Start and end frames are conditional inputs, not universal requirements. Require only
+the media roles needed by the selected strategy and verified provider capability.
 
-| Need | Preferred model | Use it for |
-|------|-----------------|------------|
-| Character identity, multiple references, hero props, recurring visual elements | Seedance 2.0 | Dialogue-adjacent shots, character-centric action, prop details, continuity-sensitive scenes |
-| Smooth camera motion with fewer identity constraints | Kling 3.0 | Drone POV, landscape movement, machine-vision travel, forward pushes |
-| Cinematic image-to-video when DoP/camera treatment is the main point | Higgsfield DoP or Cinema route when exposed | Polished camera moves from strong start images |
-| Provider-specific style or production requirement | Veo route when exposed and approved in the manifest | Only when the manifest names it and the MCP schema supports the needed media roles |
+## Capability check
 
-Do not invent model IDs. Translate manifest names such as `seedance_2_0` or `kling3_0`
-to the exact IDs exposed by the live MCP tool surface, record that mapping in the
-generation log, and stop if no matching model is available.
+Before the first job for each provider:
 
-When the resolved model is Seedance 2.0, apply `seedance-2-deep-dive` before submission:
-validate the reference-file plan against live MCP limits, preserve each required
-reference's purpose, keep production clips within the planned duration envelope, and
-use draft/final quality settings deliberately instead of treating quality as a repair
-button.
+1. Prove the provider is reachable and record its version or live schema.
+2. Discover installed models, nodes, accepted media roles, duration/frame constraints,
+   resolution rules, audio behavior, concurrency, cancellation, and output retrieval.
+3. Resolve each manifest alias to an actual model and workflow. Do not invent IDs or
+   assume a filename proves that a workflow can execute.
+4. Validate the exact workflow graph or MCP request without spending credits or running
+   the heavy model when a validation/dry-run surface exists.
+5. Record the observed contract in `generated/provider_schema_notes.md`.
 
-When the resolved model is Kling 3.0, apply `kling-3-0-deep-dive` before submission:
-validate the shot structure, camera endpoint, frame anchors, Elements, Motion Control,
-and native-audio plan against live MCP limits, and stop rather than downgrading a
-structured Kling job to plain text-to-video.
-
-Do not use a plain text-to-video route for a shot that has required start/end/reference
-frames. Use image-to-video, start/end image, or the equivalent MCP mode that actually
-accepts those anchors. If the selected model cannot accept the required media roles,
-stop and report the missing role instead of dropping images.
-
-## MCP Schema Check
-
-Before the first job in a run, inspect the connected Higgsfield MCP tools and record the
-observed contract in `generated/generation_log.md` or `generated/mcp_schema_notes.md`:
-
-- video-generation tool name, such as `generate_video` or the current equivalent;
-- model parameter name and accepted model identifiers;
-- prompt field name and prompt-length limit if exposed;
-- supported media roles, especially `start_image`, `end_image`, and generic reference
-  image roles;
-- duration, aspect-ratio, resolution, quality, motion, genre, and audio parameters;
-- `count` or equivalent multi-output parameter when exposed;
-- model-specific default parameters, especially `generate_audio`, `sound`, `cfg_scale`,
-  `mode`, `quality`, `genre`, and guidance/reference-adherence controls;
-- upload/history tools and the handle type they return;
-- status polling tool, terminal statuses, and output-download field.
-
-The logical job shape is a contract target, not a guarantee about exact parameter names:
-
-```text
-generate_video(
-  model={exact_higgsfield_model_id},
-  prompt={generation_prompt},
-  aspect_ratio={aspect_ratio},
-  duration={duration_seconds},
-  resolution={resolution_parameter},
-  audio={audio_generation_preferences},
-  count={count},
-  model_overrides={validated_override_map},
-  media=[
-    {value: start_media_handle, role: "start_image"},
-    {value: end_media_handle, role: "end_image"},
-    {value: reference_media_handle, role: "image"}
-  ]
-)
-```
-
-Map this shape to the live MCP schema. Stop on schema mismatch when the mismatch affects
-identity, frame anchors, duration, aspect ratio, output resolution, or recoverability.
+Stop when a required identity, anchor, duration, audio, or recovery capability is
+missing. A provider-specific default may be accepted only when it is non-critical and
+the exception is recorded.
 
 ## Workflow
 
-1. **Audit manifest.** Confirm every shot has `recommended_model`, `aspect_ratio`,
-   `target_resolution`, `resolution_parameter`, `duration`, `generation_strategy`,
-   `audio_generation_preferences`, `model_overrides`, `count`, `review_gate`,
-   `required_refs` or `reference_audit`, `prompt_file`, `start_image`, and
-   `end_image`. Halt if any required field is missing.
-2. **Inspect Higgsfield MCP.** Load the live MCP schema and confirm the selected model,
-   media roles, upload/history path, polling path, and output path exist.
-3. **Validate constraints and defaults.** Check model duration, supported resolution,
-   aspect ratio, media-role support, and model-specific defaults before upload. Override
-   unwanted defaults from `model_overrides` explicitly when the live schema exposes the
-   key. If an override key is absent, record it as `unsupported` and classify the impact:
-   stop when the unsupported key would break dialogue, narration/post-audio sync,
-   identity, required references, or the planned shot contract; proceed with a logged
-   note only when the unsupported default is non-critical for this shot class.
-4. **Verify model-native prompts.** Use the existing `## Generation Prompt` when
-   present. If absent, produce it using the model-specific algorithm in
-   `references/prompt-flattening.md`, write it back to the prompt file, then continue.
-5. **Verify continuity-critical refs.** Compare the manifest's required refs and the
-   prompt file's reference audit against the continuity inventory and Phase 6
-   storyboard consistency report when present. Add missing actioned constraints to the
-   prompt before continuing. Stop if a continuity-critical character, prop, recurring
-   element, location variant, or style anchor cannot be supplied to the chosen model and
-   is not demonstrably baked into the start/end storyboard frames.
-6. **Decompose key-frame shots.** For any shot with key frames, use
-   `references/key-frame-decomposition.md` to create sub-clips with only `start_image`
-   and `end_image` roles. Validate each sub-clip duration against the chosen model.
-7. **Prepare MCP media inputs.** Resolve relative paths from the project root and use
-   the connected Higgsfield MCP's upload or history/input mechanism for each required
-   media file. Cache the returned media handle, UUID, URL, or generation-history ID in
-   `generated/media_manifest.md`.
-8. **Apply audio preferences.** Map each shot's audio-generation preferences to the live
-   MCP audio parameters. Narration remains off because it is handled as a separate
-   process. If the MCP cannot disable generated audio, use severity-based handling: for
-   landscape, environment, atmosphere, or machine-vision shots where generated ambience
-   will be muted or is acceptable, proceed only with a log note that audio could not be
-   disabled; for dialogue, lip-sync, narration, music-timed, supplied-audio, or
-   externally mixed shots, stop because forced generated audio conflicts with the
-   production plan.
-9. **Plan submission order.** Use the prescriptive batching rules in
-   `references/media-upload-and-state.md`: start long or serial-prone Seedance work
-   early, fill available plan-level concurrency with Kling or other non-Seedance work,
-   and record the queue strategy before a large run.
-10. **Submit generation jobs.** Call the connected Higgsfield MCP video-generation tool
-   (`generate_video` or the current tool-surface equivalent) with the model-native
-   prompt string, validated model parameters, `count` when exposed, and media handles in
-   their roles. If `count` is not exposed, submit explicit `v1`, `v2`, ... jobs only
-   when the manifest requests multiple takes.
-11. **Log immediately.** Append a row to `generated/generation_log.md` as soon as the API
-   returns a job ID. Include the template columns needed by `media-project`: shot ID,
-   sub-clip, take, model, job ID, status, output URL, local file, file size, actual
-   resolution, review state, prompt hash, notes, duration seconds, transition type,
-   transition duration, generated-audio mute intent, forced generated-audio flag, scene
-   ID, prompt file, and continuity flags. An unlogged job is a lost job.
-12. **Poll and download.** Poll with backoff until a terminal status. Download successful
-   clips to `generated/{shot_id}/v{take}.mp4` or
-   `generated/{shot_id}/{subclip_id}_v{take}.mp4`. Do not mark a job complete until this
-   local file exists and is recorded in the log.
-13. **Verify output file.** Record local file size and actual pixel dimensions. If the
-   file is missing, zero-length, unexpectedly tiny, or at dimensions that differ from
-   the model route's verified empirical output, mark the take for review or retake.
-   Mismatch from the aspirational `target_resolution` alone is review data, not an
-   automatic failure when the current live route is known to emit different pixels.
-14. **Run review gate.** If the manifest marks the shot `review_gate=required`, stop
-   automatic progression after download until the take is reviewed against the shot spec
-   and storyboard frames. Landscape or low-risk v1 shots may use `review_gate=optional`.
-15. **Resume safely.** On rerun, skip completed rows with a local output path unless the
-   user requests a retake.
-16. **Write assembly order.** Update `generated/assembly_order.md` with selected takes
-    and sub-clip order for final editing. Use project-root-relative selected clip paths,
-    never provider URLs. Keep `Boundary after` aligned with the manifest transition or
-    clip-boundary metadata.
-17. **Package editor handoff when requested.** After all required selected takes have
-    local files, completed statuses, accepted review states, and duration metadata, run
-    `tools/media-project` with `media-project package-openshot`. Do not run it for
-    blocked, missing, or unreviewed required shots.
+1. **Audit the manifest.** Resolve all paths from the project root. Confirm each prompt,
+   required reference, workflow, and supplied audio file exists.
+2. **Resolve the execution plan.** Group jobs by provider and model/workflow. Record the
+   submission order and concurrency limit before a large run.
+3. **Validate prompts.** Use each prompt file's `## Generation Prompt`. Reconstruct it
+   only when missing and a supported model-specific rule exists.
+4. **Validate continuity inputs.** Compare `required_refs` with the continuity inventory
+   and storyboard consistency report. Each required item must be passed to the provider,
+   baked into a required frame, or recorded as a blocker.
+5. **Bind media by role.** Map semantic roles such as `first_frame`, `last_frame`,
+   `identity_reference`, `style_reference`, `reference_video`, and `supplied_audio` to
+   the chosen provider's actual fields or workflow nodes.
+6. **Apply timing.** Convert duration to the route's valid frame count using the verified
+   FPS and frame-grid rules. Record desired and submitted values when rounding occurs.
+7. **Apply audio intent.** Distinguish generated ambience, generated dialogue, supplied
+   audio, deliberate silence, and downstream mute intent. Stop if forced generated audio
+   conflicts with dialogue, lip-sync, music timing, narration, supplied audio, or a
+   deliberate silent beat.
+8. **Submit one recoverable job.** Capture the returned job ID or Comfy `prompt_id`
+   immediately, then append the generation-log row before submitting more jobs.
+9. **Monitor to a terminal state.** Use provider events or bounded polling. A long queue
+   is not failure by itself. Do not resubmit while a recoverable job remains active.
+10. **Retrieve the local output.** For local ComfyUI, resolve the `SaveVideo` history
+    output and copy it into the project when it is outside the story project. For remote
+    providers, download the result. Never leave a selected project asset only at a
+    provider URL or outside the project.
+11. **Probe the file.** Use `ffprobe` to record codecs, duration, FPS, frame count,
+    dimensions, audio streams, and file size. Treat differences from labels as review
+    data; fail missing, empty, corrupt, or materially truncated output.
+12. **Run the review gate.** Mark `accepted`, `retake`, or `blocked`. Required gates must
+    not advance automatically without a recorded review decision.
+13. **Resume safely.** Reuse completed local files and poll existing active job IDs.
+    Retakes get a new take number and never overwrite earlier output.
+14. **Write assembly order.** Use project-relative selected clip paths and preserve
+    sub-clip order, boundary intent, transitions, and mute intent.
+15. **Package when requested.** Once all required clips are accepted, hand the local
+    generation log and assembly order to `media-project`.
 
-## Reference Image Discipline
+## Provider execution
 
-Every job must include the start and end frame handles for that clip. Add generic
-reference images only when the live MCP route supports them and the shot manifest marks
-them as required:
+### ComfyUI
 
-- character references for character-centric shots;
-- location references for environment shots;
-- prop references for hero props;
-- recurring visual element references for monitor layouts, robots, grow-light rigs,
-  cargo pods, bee cabinets, console layouts, signage systems, or other continuity
-  objects that appear in more than two shots;
-- style references only when they do not crowd out continuity references.
+Prefer the installed `comfy` CLI or an exposed Comfy MCP because they support workflow
+validation and structured job state. The normal lifecycle is:
 
-When a model has a reference-count limit, prioritize in this order: start/end anchors,
-principal character, active hero prop, recurring visual element, location, style. Stop
-if the limit prevents a required identity or continuity reference from being supplied.
+```text
+validate workflow -> submit UI/API workflow -> prompt_id -> wait/history ->
+resolve SaveVideo output -> copy to project -> ffprobe -> log
+```
 
-Before upload, prove that the required-reference list is complete. The storyboard
-consistency report and continuity inventory are not just advisory notes: their outcomes
-must be actioned through regenerated frames, added references, prompt constraints, or a
-recorded blocker. Do not generate a shot whose manifest omits a continuity-critical
-reference named upstream.
+The CLI may convert frontend workflow JSON to API format. Direct `POST /prompt` requires
+an API-format graph. Query `/object_info` before binding nodes and use `/history` plus
+`/view` for output metadata and retrieval. See `references/comfyui.md` for the complete
+contract and spend boundary.
 
-When the selected Kling 3.0 route exposes only `start_image` and `end_image`, do not try
-to upload generic character, prop, location, or style references. Verify instead that
-those continuity requirements were baked into the storyboard frames during
-`shot-specifier` Phase 5 and are named in the prompt constraints. Stop only if the
-storyboard frames fail to carry a continuity-critical item that no live Kling media role
-can supply.
+### Higgsfield
 
-## Stop Conditions
+Inspect the connected MCP schema, upload or register local media, map the manifest to
+the live `generate_video` equivalent, submit, poll, and download. Preserve the existing
+Higgsfield model-specific references and never drop required images to fit a narrower
+route. Use the Higgsfield references linked above for exact rules.
+
+## Generation log
+
+Use [templates/generation-log.md](./templates/generation-log.md). Append a row as soon
+as submission returns an identifier. At minimum record:
+
+- shot, sub-clip, take, provider, model, workflow and workflow hash/version;
+- job ID or `prompt_id`, status, prompt hash, seed, desired and submitted timing;
+- semantic reference roles and source paths;
+- provider output locator and project-local file;
+- file size, actual dimensions, FPS, frame count, codecs, and audio presence;
+- review state, retry lineage, continuity flags, and notes.
+
+An unlogged job is a lost job. A completed remote job without a verified local file is
+not a completed shot.
+
+## Reference discipline
+
+Reference priority is strategy-specific:
+
+- first/last anchors when the route and shot design require them;
+- principal character identity;
+- active hero prop and recurring visual elements;
+- location and style;
+- motion video or supplied audio when the strategy depends on it.
+
+Do not force anchors onto text-to-video workflows. Do not omit required anchors from an
+image-to-video or start/end workflow. When a route has a reference limit, stop if the
+limit excludes a continuity-critical item that is not already baked into a supplied
+frame.
+
+## Stop conditions
 
 Stop before generation when:
 
-- the Higgsfield MCP is unavailable or unauthenticated;
-- the live MCP schema cannot be inspected;
-- the recommended model is unavailable;
-- required `start_image` or `end_image` roles are unavailable;
-- required reference images cannot be passed without exceeding model/tool limits and
-  cannot be baked into the start/end storyboard frames;
-- duration, aspect ratio, or resolution is unsupported;
-- no upload/history mechanism can turn local files into accepted media inputs;
-- explicit audio-generation preferences cannot be honoured for dialogue, lip-sync,
-  narration/post-audio, supplied-audio, or music-timed shots;
-- the model would force generated audio on a landscape, environment, atmosphere, or
-  machine-vision shot and the generation log does not record the forced-audio exception;
-- model-specific defaults would alter reference adherence, mode, or generation-critical
-  quality and the live MCP schema does not expose an override;
-- model-specific defaults would alter resolution labels, but actual pixels cannot be
-  verified after download;
-- the manifest requests `count > 1` but the live schema has no count parameter and the
-  operator has not approved equivalent explicit retake jobs;
-- a job cannot be logged or resumed.
+- the chosen provider is unavailable, unauthenticated where required, or cannot expose
+  a schema/capability surface;
+- the model, workflow, or required node/model file is unavailable;
+- the workflow cannot be validated or contains unresolved inputs;
+- a required reference, frame, motion input, or audio input cannot be bound;
+- timing, frame count, aspect, or dimensions cannot be mapped safely;
+- paid partner/API nodes would run without explicit approval;
+- generated-audio behavior conflicts with the production audio plan;
+- job state cannot be logged, monitored, cancelled where necessary, or resumed;
+- a successful output cannot be copied into the project and verified.
 
-Do not silently fall back to another provider, another model family, text-only video, or
-a reduced reference set. Ask for an explicit production decision instead.
+Do not silently fall back to a different provider, model family, reduced reference set,
+or text-only strategy. Return the exact capability mismatch for a production decision.

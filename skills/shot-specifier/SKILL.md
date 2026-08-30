@@ -5,8 +5,9 @@ description: >
   scene-inventory-extractor-v2) and decomposes every scene into numbered shots with full
   directorial direction — actor position and movement, camera mount and motion, lens,
   lighting setup, practical effects, timing, and clip boundaries. Generates storyboard
-  keyframe images via nanobanana, assembles video generation prompts with model routing,
-  and maintains an asset pipeline with consistent file naming and a generation manifest.
+  keyframe images with Codex imagegen by default or an explicitly selected image
+  provider, assembles provider-aware video prompts, and maintains an asset pipeline with
+  consistent file naming and a generation manifest.
   Use when a scene inventory exists and the workflow must move from scene descriptions to
   individual, generation-ready clips. Also trigger when the user mentions "shot list",
   "shot breakdown", "storyboard", "video prompt", "model routing", "clip generation",
@@ -19,11 +20,10 @@ Takes a completed scene inventory and reference image set as input and produces
 generation-ready shot specifications: numbered shots with full directorial direction,
 storyboard keyframes, video prompts, model routing, and an asset pipeline.
 
-This skill is explicitly **expensive**. Generating storyboard images for every shot in
-every scene requires many image generation calls. Per-shot video generation is more
-expensive still. This cost is the price of consistency and production quality — do not
-skip shots or reduce keyframe coverage to save cost unless the user explicitly requests
-it.
+Generating storyboard images for every shot can require many image-generation calls.
+Respect the requested scope and generate only the reference/frame coverage justified by
+the selected video strategy. Do not silently expand a planning request into a full asset
+generation run.
 
 ## Input Requirements
 
@@ -44,18 +44,16 @@ If the prompt keyword library or video role manifest are absent, run
 
 This skill requires:
 
-- **nanobanana image generation Model Context Protocol (MCP)** (see
-  `references/storyboard-generation.md`), with every storyboard image call explicitly
-  using `model: gemini-3-pro-image-preview`
+- **Image generation** through the provider-aware `nanobanana` compatibility skill (see
+  `references/storyboard-generation.md`), with Codex built-in imagegen as the default
 - **Vision capabilities** (for storyboard consistency verification)
 - **File system access** (structured output directories)
 
 Generation runs **silently** — no user confirmation gates during storyboard or prompt
 phases. Halt only on consistency failures that require human judgement.
-If `gemini-3-pro-image-preview` is unavailable through nanobanana, or if it cannot
-accept the required reference images or character-consistency images for the current
-storyboard operation, **STOP** and report the blocker. Do not continue with a fallback
-image model.
+If the selected image provider cannot accept the required references or preserve a
+continuity-critical subject, **STOP** and report the blocker. Do not silently switch
+providers.
 
 ## Workflow Overview
 
@@ -65,7 +63,7 @@ image model.
 | 2 | Shot Decomposition | Numbered shot list per scene with duration budgets |
 | 3 | Frame Role Assignment | Video role mapping per shot from reference images |
 | 4 | Shot Direction | Full directorial spec per shot |
-| 5 | Storyboard Generation | Keyframe images via nanobanana |
+| 5 | Storyboard Generation | Keyframe images via the selected image provider |
 | 6 | Storyboard Consistency Check | Vision QA; BLOCK/WARN report |
 | 7 | Video Prompt Assembly | Full prompts with model routing |
 | 8 | Asset Pipeline | File naming, generation manifest, tracking |
@@ -115,13 +113,15 @@ Before writing any shot rows, establish a **duration budget**:
 
 **Budget rules:**
 
-- Clips must be 4, 6, or 8 seconds.
-- One clip = one action in one location. If the action requires more than 8 seconds,
-  split it.
+- One clip = one action in one location.
+- Treat durations as provisional until Phase 7 maps them to a provider workflow's valid
+  seconds, FPS, and frame-count grid. Split any action that exceeds the selected route's
+  reliable duration.
 - Multi-beat scenes need multiple clips. A scene with setup + action + reaction is three
   clips minimum.
-- Establishing shots: 6–8 seconds. Insert/detail shots: 4 seconds. Dialogue beats: 6
-  seconds. Complex action: 8 seconds.
+- Starting estimates: establishing shots 6–8 seconds; inserts 4–5 seconds; dialogue
+  beats about 6 seconds; complex action 6–8 seconds. Provider validation may round or
+  revise these values.
 
 ### Shot Row Format
 
@@ -138,11 +138,11 @@ For each shot, record:
 | Camera mount | {tripod / Steadicam / handheld / crane / gimbal / drone} |
 | Camera motion | {static / pan / tilt / dolly / arc / zoom / rise} |
 | Visual action | {Concrete, filmable description} |
-| Duration | {4 / 6 / 8} seconds |
+| Duration | {provisional seconds} |
 | Pacing | {slow / moderate / fast} |
 | Clip boundary | {continuous / scene_cut} |
-| Start frame ref | {Ref ID from video role manifest} |
-| End frame ref | {Ref ID or "generate-new"} |
+| Start frame ref | {Ref ID, "generate-new", or "not required"} |
+| End frame ref | {Ref ID, "generate-new", or "not required"} |
 | Grain/grade override | {override or "global spec"} |
 ```
 
@@ -167,9 +167,10 @@ what needs to be generated.
 | image (style ref) | refs/style/style_anchor_01.png | Global look |
 ```
 
-**Missing role resolution:** If a `start_image` or `end_image` is missing from the
-reference library, generate it in Phase 5 (Storyboard Generation) as a storyboard frame,
-then promote that generated image to a reference role for the video generation call.
+**Missing role resolution:** First decide whether the planned strategy requires that
+role. Generate a missing `start_image` or `end_image` in Phase 5 only when the selected
+provider/workflow requires it or the shot design deliberately uses it. Promote the
+accepted frame to the corresponding video role.
 
 ---
 
@@ -244,8 +245,11 @@ off unless the user or scene explicitly requires it.
 
 > **Prerequisite:** Read `references/storyboard-generation.md`.
 
-Generate storyboard keyframe images for every shot. Use the nanobanana MCP tools with
-`model: gemini-3-pro-image-preview` on every image call.
+Generate only the storyboard frames required by the planned video strategy. Load the
+provider-aware `nanobanana` skill and use Codex built-in imagegen by default. For local
+references, inspect them with `view_image`, use the smallest complete
+`referenced_image_paths` set, then copy the selected output into the required project
+path. Use Nano Banana only when explicitly selected.
 
 ### Pre-Generation Reference Check (per shot)
 
@@ -273,8 +277,8 @@ start/end frames now; do not assume `video-generator` can upload those refs late
 
 ### Generation Order
 
-1. **Start frames** for all shots in the sequence.
-2. **End frames** that require generation (not reused from scouting refs).
+1. **Required start frames** in sequence order.
+2. **Required end frames** that are not reused from scouting refs.
 3. **Key frames** for shots with intermediate states specified.
 
 ### Start Frame Prompt Construction
@@ -291,12 +295,12 @@ Combine:
 
 Reference images to pass:
 
-- For character-centric shots, use nanobanana MCP `character_consistency` and set
-  `referenceImagePaths` to the character identity ref first, followed by the matching
+- For character-centric shots, make identity preservation the primary prompt constraint
+  and put the character identity ref first, followed by the matching
   location ref, significant prop refs, visible recurring visual element refs, and style
   anchor when available.
-- For environment or prop-led shots, use nanobanana MCP `generate_image` and set
-  `referenceImagePaths` to the matching location ref plus the specific prop refs needed
+- For environment or prop-led shots, put the matching location ref first, followed by
+  the specific prop refs needed
   in the frame plus any visible recurring visual element refs. Add the style anchor
   when available; add character refs only for visible named characters whose identity
   must be constrained.
@@ -307,8 +311,8 @@ Prompt ending: `"no text, no watermarks, no logos, no labels, no annotations"`
 
 **If the end frame shows the same subject in a significantly different state:**
 
-- Use `edit_image` (edit from start frame)
-- Set `referenceImagePaths` to the start frame plus only the Phase 11 refs needed for
+- Use the selected provider's edit operation. With Codex, inspect the start frame first.
+- Supply the start frame plus only the Phase 11 refs needed for
   the described change
 - Describe only what changes; do not repeat unchanged elements
 - Prefer this path for any end frame derived from the start frame; character, location,
@@ -316,8 +320,8 @@ Prompt ending: `"no text, no watermarks, no logos, no labels, no annotations"`
 
 **If the end frame shows a different composition, angle, or subject configuration:**
 
-- Use `generate_image` (generate new)
-- Set `referenceImagePaths` to the start frame, matching location ref, required prop
+- Use the selected provider's generation operation.
+- Supply the start frame, matching location ref, required prop
   refs, visible recurring visual element refs, and style anchor when available
 - Full prompt as for start frame but with end-state description
 
@@ -370,7 +374,10 @@ constraints in the affected prompt and manifest row.
 > unresolved BLOCK issues.
 
 For each shot, assemble a complete video generation prompt. This skill prepares the
-handoff package for `video-generator`; it does not submit Higgsfield jobs itself.
+handoff package for `video-generator`; it does not submit video jobs itself. Choose a
+provider and model/workflow profile together. Prefer a verified local ComfyUI route when
+it satisfies the shot; preserve Higgsfield routes when the user selects them or their
+model-specific capability is required.
 
 If the recommended model is `seedance_2_0`, apply `seedance-2-deep-dive` before writing
 the prompt. Record why Seedance is the right route, keep the clip short unless the shot
@@ -393,17 +400,22 @@ upload requirements.
 ## Metadata
 - **Shot ID:** S{XX}_SH{XXX}
 - **Scene:** SC-{XX} — {scene name}
-- **Duration:** {4 / 6 / 8} seconds
+- **Duration:** {provisional or provider-validated seconds}
+- **Provider:** {comfyui / higgsfield}
 - **Pacing:** {slow / moderate / fast}
 - **Clip boundary (next):** {continuous / scene_cut}
 - **Recommended model:** {model ID — see references/model-routing.md}
+- **Workflow profile:** {versioned ComfyUI workflow path/profile or "provider-native"}
 - **Model routing rationale:** {1 sentence explaining the routing choice}
-- **Generation strategy:** {image_to_video / start_end_image / multi_shot / motion_control}
+- **Generation strategy:** {text_to_video / image_to_video / start_end_image /
+  reference_to_video / multi_shot / motion_control}
+- **FPS:** {provider/workflow-native or desired value}
+- **Frame count:** {resolved valid count or "resolve during provider validation"}
 - **Aspect ratio:** {16:9 / 9:16 / 1:1 / 21:9}
 - **Target resolution:** {pixel dimensions from cinematography spec}
 - **Resolution parameter:** {720p / 1080p / model-specific equivalent; provider hint
   only until video-generator verifies actual pixels}
-- **Model overrides:** {key=value list for live MCP defaults; include audio,
+- **Model overrides:** {provider-specific key=value list; include audio,
   quality/mode, cfg/guidance, genre, or "none"}
 - **Count:** {1 by default; 2 only for review-gated hero/uncertain shots when
   video-generator confirms the live schema supports it}
@@ -411,8 +423,8 @@ upload requirements.
   music=off; narration=off; source={generated/none/supplied}
 
 ## Frames
-- **Start frame:** shots/{shot_id}/start.png
-- **End frame:** shots/{shot_id}/end.png
+- **Start frame:** {shots/{shot_id}/start.png or "not required"}
+- **End frame:** {shots/{shot_id}/end.png or "not required"}
 - **Key frames:** {paths or "None"}
 
 ## Reference Roles
@@ -441,7 +453,7 @@ upload requirements.
          state changes, existence statements}
 [SUBJECT] {Subject key visual features for consistency}
 [AUDIO] {Audio direction from Phase 4.5}
-[DURATION] {4 / 6 / 8 seconds}
+[DURATION] {provider-validated seconds and frame count when known}
 
 ## Audio Generation Preferences
 - **Ambient audio:** {on/off}
@@ -454,8 +466,9 @@ upload requirements.
 
 ## Generation Prompt
 
-{Model-native plain text assembled with the algorithm in `references/model-routing.md`.
-This is the exact prompt `video-generator` submits to Higgsfield.}
+{Model/workflow-native plain text assembled with the algorithm in
+`references/model-routing.md`. This is the exact prompt `video-generator` submits to
+the selected provider.}
 
 ## Consistency Notes
 - {Any WARN items from storyboard consistency check}
@@ -493,9 +506,9 @@ prompts/manifest.md
 ```markdown
 # Shot Generation Manifest
 
-| Shot ID | Scene | Duration | Model | Strategy | Aspect | Target Resolution | Resolution Param | Overrides | Count | Audio | Required Refs | Review Gate | Clip Boundary | Transition Type | Transition Duration | Continuity Flags | Start | End | Keys | Prompt File |
-|---------|-------|----------|-------|----------|--------|-------------------|------------------|-----------|-------|-------|---------------|-------------|---------------|-----------------|---------------------|------------------|-------|-----|------|-------------|
-| S11_SH001 | SC-11 | 8s | seedance_2_0 | start_end_image | 16:9 | 1920x1080 | 1080p | generate_audio=true;quality=standard;genre=auto | 1 | ambient=on;sfx=on;dialogue=off;music=off;narration=off;source=generated | refs/characters/maeve/front.png;refs/props/gannet/primary.png | required | continuous | cut | 0 | eyeline;prop reset | shots/S11_SH001/start.png | shots/S11_SH001/end.png | None | prompts/S11_SH001_prompt.md |
+| Shot ID | Scene | Provider | Model | Workflow | Duration | FPS | Frames | Strategy | Aspect | Target Resolution | Resolution Param | Overrides | Count | Audio | Required Refs | Review Gate | Clip Boundary | Transition Type | Transition Duration | Continuity Flags | Start | End | Keys | Prompt File |
+|---------|-------|----------|-------|----------|----------|-----|--------|----------|--------|-------------------|------------------|-----------|-------|-------|---------------|-------------|---------------|-----------------|---------------------|------------------|-------|-----|------|-------------|
+| S11_SH001 | SC-11 | comfyui | minimax_h3_fl2va | workflows/minimax-h3-i2v-v1.json | 5s | 24 | 124 | image_to_video | 16:9 | 864x480 | native | seed=12345 | 1 | ambient=on;sfx=on;dialogue=off;music=off;narration=off;source=generated | refs/props/gannet/primary.png | required | continuous | cut | 0 | prop reset | shots/S11_SH001/start.png | not required | None | prompts/S11_SH001_prompt.md |
 ```
 
 ---
@@ -504,11 +517,12 @@ prompts/manifest.md
 
 > **Downstream handoff:** Once Phase 8 has produced `prompts/manifest.md`, prompt files,
 > storyboard frames, model routing, generation strategy, aspect ratio, target
-> resolution, resolution parameter, model overrides, count, required-reference audit,
+> resolution, resolution parameter, provider, versioned workflow profile, FPS/frame
+> count, model overrides, count, required-reference audit,
 > audio-generation preferences, review-gate metadata, and clip-boundary metadata, hand
-> off to `video-generator` for Higgsfield MCP media upload, job submission, polling,
+> off to `video-generator` for ComfyUI or Higgsfield job submission, monitoring,
 > resume handling, and assembly-order output.
-> `video-generator` is the sole owner of runtime generation logging and Higgsfield job
+> `video-generator` is the sole owner of runtime generation logging and provider job
 > interactions. It must verify required references, apply audio and model overrides,
 > handle resumable job logging, submit and poll jobs, and write assembly order before
 > marking a shot complete.
@@ -543,7 +557,7 @@ audio-generation preferences, review-gate metadata, and clip-boundary metadata.
 | File | Read Before | Contents |
 |------|-------------|----------|
 | `references/shot-direction.md` | Phase 4 | Full directorial notation guide: actor, camera, lighting, effects, audio |
-| `references/storyboard-generation.md` | Phase 5 | nanobanana usage for storyboards, prompt construction, reference-role assignment |
+| `references/storyboard-generation.md` | Phase 5 | Provider-aware image generation, prompt construction, reference-role assignment |
 | `references/model-routing.md` | Phase 7 | Video model selection by shot type; routing criteria; known model characteristics |
 | `references/asset-pipeline.md` | Phase 8 | File naming conventions, generation log format, retake workflow |
 
@@ -555,7 +569,7 @@ audio-generation preferences, review-gate metadata, and clip-boundary metadata.
 | `nanobanana` | Generating or editing storyboard frames and locked references |
 | `seedance-2-deep-dive` | A shot is routed to `seedance_2_0` and needs Seedance-specific duration, reference, prompt, or troubleshooting guidance |
 | `kling-3-0-deep-dive` | A shot is routed to `kling3_0` and needs Kling-specific shot structure, camera, Elements, Motion Control, audio, product, or troubleshooting guidance |
-| `video-generator` | Prompt manifest, frames, and model routing are ready for Higgsfield MCP submission |
+| `video-generator` | Prompt manifest, provider/workflow routing, and required media are ready for submission |
 
 ## Templates
 

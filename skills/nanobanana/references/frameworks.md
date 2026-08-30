@@ -1,4 +1,4 @@
-# Nano Banana Frameworks
+# Visual Story Image Prompt Frameworks
 
 Use these compact frameworks to choose the right prompt shape without loading a giant prompt bank.
 
@@ -101,7 +101,7 @@ Template:
 
 ## 4. Edit-First Prompt
 
-Use for `edit_image` or conversational refinement after a near-hit.
+Use for an image edit or conversational refinement after a near-hit.
 
 Template:
 
@@ -165,9 +165,12 @@ Each item must satisfy [rule].
 Keep [row / cluster / center] balanced and clearly separated.
 ```
 
-## 8. Tool-to-Task Mapping
+## 8. Operation-to-Task Mapping
 
-- `generate_image`: blank-canvas creation, posters, product shots, diagrams.
-- `edit_image`: local object swaps, background replacement, text changes, cleanup.
-- `character_consistency`: same character across scenes or storyboard frames.
-- `multi_image_fusion`: merge identity, product, pose, or style references.
+- New generation: blank-canvas creation, posters, product shots, diagrams.
+- Edit: local object swaps, background replacement, text changes, cleanup.
+- Identity-preserving generation: the same character across scenes or storyboard frames.
+- Multi-reference composition: merge identity, product, pose, or style references.
+
+Codex built-in imagegen expresses the last two operations through prompt invariants and
+reference roles. A selected external provider may expose separate operation names.

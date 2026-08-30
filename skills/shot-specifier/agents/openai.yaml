@@ -1,0 +1,4 @@
+interface:
+  display_name: "Shot Specifier"
+  short_description: "Plan provider-aware shots and storyboards"
+  default_prompt: "Use $shot-specifier to turn this scene pack into provider-aware shot specs, required storyboard frames, and a generation manifest."

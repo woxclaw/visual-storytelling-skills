@@ -1,6 +1,6 @@
 # Storyboard Generation Guide
 
-Read this before Phase 5 (Storyboard Generation). Covers nanobanana tool selection,
+Read this before Phase 5 (Storyboard Generation). Covers image-provider selection,
 prompt construction for storyboard frames, reference-role assignment, and the
 generate-vs-edit decision.
 
@@ -8,27 +8,31 @@ generate-vs-edit decision.
 
 ## Tool Selection
 
-Use the nanobanana MCP skill for all storyboard image generation. The nanobanana skill
-is documented in `skills/nanobanana/SKILL.md`. Read that skill before using the tools.
+Load `skills/nanobanana/SKILL.md` for the provider-aware image workflow. Use Codex
+built-in imagegen by default. Use the Nano Banana MCP only when the user or project
+explicitly selects it.
 
-### Model Selection
+### Provider contract
 
-- Use `gemini-3-pro-image-preview` for every storyboard image call.
-- Pass the model explicitly in the nanobanana MCP request.
-- If `gemini-3-pro-image-preview` is unavailable, rejected by the tool, or unable to
-  accept the required reference images, character-consistency image, or multi-image
-  fusion inputs, **STOP** and report the blocker. Do not fall back to another image
-  model for speed, aspect ratio, or iteration.
+- For Codex, inspect local references with `view_image`; pass an all-local reference set
+  through `referenced_image_paths`; do not combine that with
+  `num_last_images_to_include`; and copy the selected output into the project.
+- Do not assume Codex imagegen accepts model or output-path fields.
+- For Nano Banana, inspect the live MCP schema and use its actual operation and model
+  fields. Do not promote Nano-specific fields into the project manifest.
+- If the selected provider cannot accept the required references or preserve a
+  continuity-critical subject, **STOP** and report the blocker. Do not silently switch
+  providers.
 
 ### Tool Selection by Operation
 
 | Operation | Tool |
 |-----------|------|
-| Character-centric storyboard frame | `character_consistency` |
-| Environment or prop-led storyboard frame | `generate_image` |
-| End frame that is a modified version of the start frame | `edit_image` |
-| Shot involving a recurring human character across multiple frames | `character_consistency` |
-| Frame that combines multiple reference subjects | `multi_image_fusion` |
+| Character-centric storyboard frame | Identity-preserving generation with canonical character ref first |
+| Environment or prop-led storyboard frame | Generation with environment/prop ref first |
+| End frame that is a modified version of the start frame | Edit with strict invariants |
+| Shot involving a recurring human character across multiple frames | Identity-preserving generation using canonical and in-style refs |
+| Frame that combines multiple reference subjects | Multi-reference generation with explicit per-image roles |
 
 ---
 
@@ -55,7 +59,7 @@ layout, interface state, or set-dressing arrangement each time.
 
 ## Start Frame Prompt Construction
 
-Build the prompt using this order (from nanobanana skill §3):
+Build the prompt using the shared order from the `nanobanana` compatibility skill:
 
 1. **Subject:** Who or what is in frame; their key identity features
 2. **Action/state:** What is happening at this exact moment
@@ -96,24 +100,22 @@ The prop ref is mandatory whenever a named prop appears in frame — omitting it
 model licence to invent the prop's appearance independently per shot, producing a
 different-looking object every time it appears on screen.
 
-Pass these paths through `referenceImagePaths`; do not provide references as an
-unclassified general pool. Choose the smallest complete set for the operation:
+Pass these paths through the selected provider's reference mechanism; do not provide
+references as an unclassified general pool. Choose the smallest complete set:
 
-- **Character-centric frame:** use `character_consistency`; set `referenceImagePaths`
-  to [character identity ref, location ref, required prop refs, recurring visual element
-  refs, style anchor when available].
-- **Environment or prop-led frame:** use `generate_image`; set `referenceImagePaths`
-  to [location ref, required prop refs, recurring visual element refs, style anchor when
-  available]. Add character refs only when a visible named character needs identity
-  anchoring.
-- **Frame derived from an existing start frame:** use `edit_image`; set
-  `referenceImagePaths` to [start_frame, only refs needed for the described change].
+- **Character-centric frame:** [character identity ref, location ref, required prop
+  refs, recurring visual element refs, style anchor when available].
+- **Environment or prop-led frame:** [location ref, required prop refs, recurring visual
+  element refs, style anchor when available]. Add character refs only when a visible
+  named character needs identity anchoring.
+- **Frame derived from an existing start frame:** [start_frame, only refs needed for the
+  described change]. Use edit semantics and list invariants first.
 
 ---
 
 ## End Frame Generation: Edit vs Generate
 
-### Use `edit_image` (edit from start frame) when
+### Use edit-from-start when
 
 - The end frame shows the same subject in the same location
 - The change is: subject position shift, expression change, object state change,
@@ -130,11 +132,11 @@ Change only: {exact description of what changes}.
 
 State the preserved elements first. This is critical — the model defaults to changing
 things when not explicitly told to preserve them.
-Use `edit_image` for end frames derived from start frames. The start frame should carry
+Use an edit for end frames derived from start frames. The start frame should carry
 character identity, location layout, prop appearance, and style treatment forward
 naturally; the prompt should only describe the delta.
 
-### Use `generate_image` (generate new) when
+### Generate a new frame when
 
 - The end frame is a different camera angle or framing
 - The subject has moved significantly through the space
@@ -148,20 +150,18 @@ scene consistency, but generate from scratch rather than editing.
 
 ## Character Consistency Across Multiple Shots
 
-When a character appears across multiple shots in the same sequence, use
-`character_consistency` for shots 2 onwards:
+When a character appears across multiple shots in the same sequence, make identity
+preservation the primary constraint for shots 2 onwards:
 
-1. Generate the character's first appearance storyboard frame using `generate_image`
-   with the character primary ref.
-2. For subsequent appearances: use `character_consistency` with the first storyboard
-   frame as the character reference, and a scene prompt describing the new context.
+1. Generate the character's first appearance using the canonical character primary ref.
+2. For subsequent appearances, use both the canonical ref and the first accepted
+   in-style storyboard frame, with a scene prompt describing the new context.
 
 This maintains face and identity consistency more reliably than passing the primary ref
 repeatedly, because the first storyboard frame captures the character as they appear in
 this production's style (rather than the neutral white-bg reference).
-This rule also applies to scene key frames: if the frame is character-centric, use
-`character_consistency` rather than `generate_image` with the character reference mixed
-into a larger reference pool.
+This rule also applies to scene key frames: if the frame is character-centric, state
+identity invariants explicitly and put the identity reference first.
 
 ---
 
@@ -184,9 +184,9 @@ After generating each storyboard frame, verify before moving on:
 
 | Failure | Likely Cause | Fix |
 |---------|-------------|-----|
-| Face changes between shots | Character ref weight too low | Use `character_consistency` tool; increase reference weight |
+| Face changes between shots | Identity constraint or reference set too weak | Put the canonical identity ref first; strengthen invariants; regenerate |
 | Location architecture wrong | Location ref not passed or weighted too low | Ensure location ref is always included; add architectural specifics to prompt |
-| Recurring set dressing drifts | Element treated as background location dressing | Generate a locked recurring visual element ref and pass it in `referenceImagePaths` for every shot where visible |
+| Recurring set dressing drifts | Element treated as background location dressing | Generate a locked recurring visual element ref and pass it for every shot where visible |
 | Grain/filmstock wrong for POV shot | Global style phrase applied to machine-vision shot | Use POV override from keyword library; remove grain terms |
 | Unwanted elements in frame | Negative constraints not in prompt | Add explicit negative constraints; repeat the key ones twice |
 | Start and end frames look identical | Change too subtle for model | Increase magnitude of described change; or explicitly state the delta in the edit prompt |

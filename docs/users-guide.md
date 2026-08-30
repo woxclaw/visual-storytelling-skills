@@ -14,40 +14,40 @@ The sequence diagram below traces the whole video-production chain. The
 `scene-inventory-extractor-v2` skill prepares source analysis,
 reference images, the prompt keyword library, continuity inventory,
 recurring visual element references, shot-frame assets, and its Phase 13
-handoff. It does not assemble final video prompts or call Higgsfield.
+handoff. It does not assemble final video prompts or submit video jobs.
 
-`shot-specifier` then loads that scene pack, generates storyboard
-frames through `nanobanana`, runs and actions storyboard consistency
+`shot-specifier` then loads that scene pack, generates required storyboard
+frames through Codex imagegen by default or an explicitly selected image
+provider, runs and actions storyboard consistency
 checks, consults the model-specific deep-dive skills during per-shot
 routing, and writes prompt files plus `prompts/manifest.md`.
-`video-generator` owns the operational run from manifest to local clips:
-it inspects the Higgsfield Model Context Protocol (MCP) schema, resolves
-and uploads media, applies model overrides and explicit audio
-preferences, submits jobs, polls status, downloads clips, updates the
-generation log, and writes assembly order.
+`video-generator` owns the operational run from manifest to local clips. It validates
+the selected local ComfyUI workflow or Higgsfield MCP schema, binds media, applies
+provider settings and audio preferences, submits jobs, monitors status, retrieves
+clips, updates the generation log, and writes assembly order.
 
 ```mermaid
 sequenceDiagram
   actor User
   participant Extractor as scene_inventory_extractor_v2
-  participant Nano as nanobanana_Gemini3Pro
+  participant ImageGen as Codex_imagegen_or_selected_provider
   participant Shot as shot_specifier
   participant SeedanceDD as seedance_2_deep_dive
   participant KlingDD as kling_3_0_deep_dive
   participant VideoGen as video_generator
-  participant Higgs as Higgsfield_MCP
+  participant Provider as ComfyUI_or_Higgsfield
   participant FS as file_system
 
   User->>Extractor: Provide_script_or_prose
   Extractor->>FS: Read_source_and_references
-  Extractor->>Nano: generate_image\ncharacter_consistency\nedit_image
-  Nano-->>FS: Write_reference_images
+  Extractor->>ImageGen: Generate_or_edit_reference_images
+  ImageGen-->>FS: Write_reference_images
   Extractor->>FS: Write_scene_inventory_continuity_and_phase_13_handoff
 
   User->>Shot: Request_shot_specification
   Shot->>FS: Load_scene_inventory_continuity_keyword_library_and_refs
-  Shot->>Nano: Generate_storyboard_frames\nmodel_gemini_3_pro_image_preview
-  Nano-->>FS: Write_start_end_key_frames
+  Shot->>ImageGen: Generate_strategy_required_storyboard_frames
+  ImageGen-->>FS: Write_required_frames
   Shot->>FS: Run_and_action_storyboard_consistency_checks
 
   loop Per_shot_model_routing
@@ -65,12 +65,12 @@ sequenceDiagram
 
   User->>VideoGen: Run_video_generation
   VideoGen->>FS: Load_manifest_prompts_frames_and_required_refs
-  VideoGen->>Higgs: Inspect_MCP_schema
+  VideoGen->>Provider: Inspect_capabilities_and_validate_route
 
   loop Per_shot_submission
     VideoGen->>FS: Resolve_media_paths_and_verify_required_refs
-    VideoGen->>Higgs: Upload_start_end_and_reference_images
-    Higgs-->>VideoGen: Media_handles
+    VideoGen->>Provider: Bind_required_frames_and_references
+    Provider-->>VideoGen: Validated_inputs
 
     alt Model_seedance_2_0
       VideoGen->>SeedanceDD: Validate_reference_plan_duration_and_audio
@@ -80,17 +80,17 @@ sequenceDiagram
       KlingDD-->>VideoGen: Kling_submission_plan
     end
 
-    VideoGen->>Higgs: generate_video_with_model_overrides
-    Higgs-->>VideoGen: Job_id
+    VideoGen->>Provider: Submit_video_job
+    Provider-->>VideoGen: Job_id_or_prompt_id
     VideoGen->>FS: Append_generation_log_entry
 
     loop Poll_until_terminal_status
-      VideoGen->>Higgs: get_generation_status
-      Higgs-->>VideoGen: queued_or_in_progress_or_completed
+      VideoGen->>Provider: get_generation_status
+      Provider-->>VideoGen: queued_or_in_progress_or_completed
     end
 
-    VideoGen->>Higgs: Download_clip
-    Higgs-->>VideoGen: Video_file
+    VideoGen->>Provider: Resolve_or_download_clip
+    Provider-->>VideoGen: Video_file
     VideoGen->>FS: Write_clip_and_update_log
   end
 
@@ -100,8 +100,8 @@ sequenceDiagram
 *Figure 1 — End-to-end production sequence. The extractor stops after
 Phase 13 and hands a checked scene pack to `shot-specifier`.
 `shot-specifier` actions consistency findings before it writes prompt
-files and the manifest. `video-generator` is the only skill that calls
-Higgsfield video generation, and it must verify required references,
+files and the manifest. `video-generator` is the only skill that submits
+video generation jobs, and it must verify required references,
 audio preferences, model overrides, and resumable job logging before a
 shot is considered complete.*
 
@@ -114,17 +114,17 @@ toolkit and the relationships between the skills and supporting
 artefacts. `scene-inventory-extractor-v2` produces the scene pack,
 continuity inventory, prompt keyword library, recurring visual element
 definitions, and reference images. `shot-specifier` consumes that
-package, uses `nanobanana` for storyboard frames, consults the Seedance
+package, uses the provider-aware `nanobanana` compatibility skill for
+storyboard frames, consults the Seedance
 or Kling deep-dive skill when a shot is routed to that model, and emits
 prompt files plus the manifest. `video-generator` consumes that handoff
-and submits jobs through the Higgsfield MCP. The `phoneticize` skill is
+and submits jobs through local ComfyUI or the Higgsfield MCP. The `phoneticize` skill is
 part of the repository but is independent of this visual generation
 pipeline.
 
-All nanobanana image calls in this pipeline must request
-`model: gemini-3-pro-image-preview`. If that model is unavailable or cannot accept the
-reference images or character-consistency images required by the current operation, the
-image-generation workflow stops instead of selecting a fallback model.
+Codex built-in imagegen is the default image provider. The compatibility skill inspects
+local references before using them, copies accepted assets into the project, and does
+not silently switch to Nano Banana or another provider after a capability failure.
 
 ```mermaid
 classDiagram
@@ -145,19 +145,18 @@ classDiagram
     +emit_prompt_manifest()
   }
 
-  class Nanobanana {
-    +generate_image(model)
-    +edit_image(model)
-    +character_consistency(model)
-    +multi_image_fusion(model)
+  class Image_provider {
+    +generate_with_references()
+    +edit_with_invariants()
+    +persist_project_asset()
   }
 
   class Video_generator {
     +load_manifest_and_prompts()
-    +inspect_higgsfield_mcp_schema()
-    +upload_media_and_cache_handles()
-    +submit_generate_video_jobs()
-    +poll_and_download_clips()
+    +inspect_provider_capabilities()
+    +bind_media_and_workflow_inputs()
+    +submit_video_jobs()
+    +monitor_and_retrieve_clips()
     +write_generation_log()
     +write_assembly_order()
   }
@@ -179,10 +178,11 @@ classDiagram
     +troubleshoot_kling_failures()
   }
 
-  class Higgsfield_MCP {
-    +generate_video()
-    +upload_media()
-    +get_generation_status()
+  class Video_provider {
+    +validate_route()
+    +submit_job()
+    +get_job_status()
+    +retrieve_output()
   }
 
   class Prompt_keyword_library {
@@ -202,11 +202,11 @@ classDiagram
     +reference_file
   }
 
-  Scene_inventory_extractor_v2 --> Nanobanana : uses_for_reference_images
+  Scene_inventory_extractor_v2 --> Image_provider : uses_for_reference_images
   Scene_inventory_extractor_v2 --> Continuity_inventory : produces
   Scene_inventory_extractor_v2 --> Recurring_visual_element_ref : defines
 
-  Shot_specifier --> Nanobanana : uses_for_storyboards
+  Shot_specifier --> Image_provider : uses_for_storyboards
   Shot_specifier --> Prompt_keyword_library : uses_for_style_language
   Shot_specifier --> Continuity_inventory : reads_for_constraints
 
@@ -214,7 +214,7 @@ classDiagram
   Shot_specifier --> Kling_3_0_deep_dive : consults_when_model_kling_3_0
   Shot_specifier --> Video_generator : upstream_of
 
-  Video_generator --> Higgsfield_MCP : submits_jobs_to
+  Video_generator --> Video_provider : submits_jobs_to
   Video_generator --> Seedance_2_deep_dive : uses_for_seedance_jobs
   Video_generator --> Kling_3_0_deep_dive : uses_for_kling_jobs
 
@@ -227,7 +227,7 @@ runtime dependency or handoff direction: the extractor creates
 continuity and recurring-element constraints, `shot-specifier` turns
 them into per-shot prompt and reference requirements, and
 `video-generator` submits only after validating those requirements
-against the live Higgsfield MCP. The dashed arrow records provenance:
+against the live ComfyUI or Higgsfield surface. The dashed arrow records provenance:
 the prompt keyword library is produced by extractor Phase 2.4 and then
 reused downstream for style consistency.*
 

@@ -8,7 +8,8 @@ https://deepwiki.com/leynos/visual-storytelling-skills)
 [![Visual storytelling skills banner](https://raw.githubusercontent.com/leynos/visual-storytelling-skills/main/assets/skill-pack-banner.png)](https://raw.githubusercontent.com/leynos/visual-storytelling-skills/main/assets/skill-pack-banner.png)
 
 Every story contains a film. These skills find it. This is a collection
-of Claude Code skills that walk a narrative from raw prose through
+of agent skills, including Codex-compatible execution paths, that walk a
+narrative from raw prose through
 continuity extraction, reference-image generation, shot direction, and
 model-routed video-prompt assembly, with a TTS phoneticizer for good
 measure.
@@ -56,7 +57,7 @@ turn any remaining WARN findings into explicit shot-specifier
 constraints.
 
 ```text
-/scene-inventory-extractor-v2
+$scene-inventory-extractor-v2
 ```
 
 Hand the resulting inventory to the shot-specifier, which decomposes
@@ -64,37 +65,37 @@ every scene into numbered shots with full directorial direction,
 storyboard keyframes, and generation-ready video prompts:
 
 ```text
-/shot-specifier
+$shot-specifier
 ```
 
-When the prompt manifest and storyboard frames are ready, use the
-video-generator to submit clips through the Higgsfield MCP, poll jobs,
-download takes, resume interrupted runs, and write assembly order:
+When the prompt manifest and required storyboard frames are ready, use the
+video-generator to run local ComfyUI workflows or Higgsfield MCP jobs, monitor
+them, collect verified local takes, resume interrupted runs, and write assembly order:
 
 ```text
-/video-generator
+$video-generator
 ```
 
 When the clips are selected and the assembly order is ready, package
 them into an OpenShot project:
 
 ```text
-/media-project
+$media-project
 ```
 
 When the narration script is ready, phoneticize it before sending it to
 Eleven v3:
 
 ```text
-/phoneticize
+$phoneticize
 ```
 
-Image-generation tasks throughout the pipeline are handled by the
-nanobanana skill, which the other skills call automatically. You can also
-invoke it directly for standalone image work:
+Image-generation tasks throughout the pipeline are handled by the historically named
+`nanobanana` compatibility skill. It uses Codex built-in imagegen by default and routes
+to Nano Banana only when explicitly selected. You can also invoke it directly:
 
 ```text
-/nanobanana
+$nanobanana
 ```
 
 ### Overall flow
@@ -111,31 +112,31 @@ flowchart TD
     prompts["Prompt manifest\nGeneration prompts, model routing, media roles"]
     videoGen["video-generator"]
     mediaProject["media-project"]
-    higgsfield["Higgsfield MCP\nSeedance 2.0, Kling 3.0, DoP/Cinema, Veo when approved"]
+    providers["Video provider\nLocal ComfyUI or Higgsfield MCP"]
     clips["Generated takes\nDownloaded clips and job log"]
     assembly["Assembly order\nSelected takes and sub-clips"]
-    nano["nanobanana\nGemini 3 Pro Image Preview"]
+    imageGen["Image provider\nCodex imagegen by default; Nano Banana when selected"]
 
     prose --> extractor
     extractor --> inventory
     extractor --> refs
-    extractor -. "image prompts and consistency refs" .-> nano
-    nano -. "locked reference assets" .-> refs
+    extractor -. "image prompts and consistency refs" .-> imageGen
+    imageGen -. "locked reference assets" .-> refs
 
     inventory --> shotSpec
     refs --> shotSpec
     shotSpec --> shotPack
     shotSpec --> frames
     shotSpec --> prompts
-    shotSpec -. "storyboard frame generation and edits" .-> nano
-    nano -. "start, end, and key frames" .-> frames
+    shotSpec -. "storyboard frame generation and edits" .-> imageGen
+    imageGen -. "required frames" .-> frames
 
     shotPack --> videoGen
     frames --> videoGen
     prompts --> videoGen
     refs --> videoGen
-    videoGen --> higgsfield
-    higgsfield --> clips
+    videoGen --> providers
+    providers --> clips
     clips --> assembly
     assembly --> mediaProject
 ```
@@ -148,17 +149,16 @@ ______________________________________________________________________
 |-------|--------------|
 | `scene-inventory-extractor-v2` | Reads a script or prose fragment; extracts characters, locations, props, and story state; generates the full reference-image library; produces a continuity inventory for reset-critical scenes. |
 | `shot-specifier` | Takes a scene inventory and produces numbered shot specs: actor position and movement, camera mount and motion, lens, lighting, effects, timing, storyboard keyframes, video prompts, and model routing. |
-| `video-generator` | Takes the prompt manifest and storyboard frames from the upstream skills; uses the Higgsfield MCP to prepare media, call video generation, poll jobs, download takes, resume interrupted runs, and write assembly order. |
+| `video-generator` | Takes the provider-aware prompt manifest and required media from upstream skills; runs local ComfyUI workflows or Higgsfield MCP jobs, monitors them, retrieves verified local takes, resumes interrupted runs, and writes assembly order. |
 | `media-project` | Packages selected generated clips into a playable OpenShot `.osp` project with full FFmpegReader metadata. |
 | `seedance-2-deep-dive` | Distils Seedance 2.0 operating guidance: multimodal input planning, reference prioritization, duration and aspect defaults, prompt structure, quality/speed tradeoffs, settings sweeps, and failure triage. |
 | `kling-3-0-deep-dive` | Distils Kling 3.0 operating guidance: scene structure, camera language, Elements, Motion Control, image-to-video anchors, native audio/dialogue, product prompting, settings sweeps, and failure triage. |
-| `nanobanana` | Crafts structured prompts for the Nano Banana image MCP — generation, editing, character consistency, and multi-image fusion. |
+| `nanobanana` | Historical compatibility name for continuity-aware image generation. Uses Codex built-in imagegen by default and Nano Banana only when explicitly selected. |
 | `phoneticize` | Detects pronunciation hazards in TTS scripts; suggests phonetic respellings; previews via Eleven v3 fragments; emits a phoneticized script and an archived pronunciation table. |
 
-Image-generation skills must use the nanobanana MCP with
-`model: gemini-3-pro-image-preview`. If that model is unavailable or cannot accept the
-required reference or character-consistency images, the workflow stops instead of
-falling back to another image model.
+Image-generation skills must not silently switch providers. Codex built-in imagegen is
+the default. Local references are inspected before use, accepted outputs are copied
+into the story project, and continuity-critical reference failures stop the workflow.
 
 ______________________________________________________________________
 

@@ -1,5 +1,5 @@
 ---
-name: scene-inventory-extractor
+name: scene-inventory-extractor-v2
 description: >
   End-to-end production-prep workflow: extracts comprehensive scene inventories from
   narrative writing, extracts continuity inventory and reset-critical state before prompt
@@ -11,7 +11,7 @@ description: >
   the user mentions "scene breakdown", "shot list", "character bible", "location bible",
   "continuity inventory", "reference images", "storyboarding", or any request to
   prepare narrative material for AI video generation. This skill expects access to an
-  image-generation MCP and vision capabilities.
+  image-generation capability and vision capabilities.
 ---
 
 # Scene Inventory Extractor
@@ -26,17 +26,16 @@ order.
 
 This skill is designed for a command-line agent with:
 
-- **nanobanana image generation MCP** (`generate_image`, `edit_image`,
-  `character_consistency`, and `multi_image_fusion` as needed), with every image call
-  explicitly using `model: gemini-3-pro-image-preview`
+- **Image generation**, using Codex's built-in `image_gen` capability by default or an
+  explicitly selected provider through the `nanobanana` compatibility skill
 - **Vision capabilities** (ability to inspect generated images for consistency)
 - **File system access** (structured output directories)
 
 All image generation and verification runs **silently** — no user confirmation gates
 during generation phases. Halt only on consistency failures that require human judgement.
-If `gemini-3-pro-image-preview` is unavailable through the nanobanana MCP, or if it
-cannot accept the reference images or character-consistency images required by the
-current phase, **STOP** and report the blocker. Do not switch to another image model.
+Do not silently switch image providers. If the selected provider cannot accept the
+required references or preserve a continuity-critical subject, **STOP** and report the
+capability mismatch.
 
 ## Workflow Overview
 
@@ -60,7 +59,7 @@ current phase, **STOP** and report the blocker. Do not switch to another image m
 > assets. Hand off to `shot-specifier` when per-shot direction, storyboard generation,
 > and prompt manifests are needed. Hand off to `video-generator` only after prompt files,
 > frame paths, model routing, and generation strategy fields exist and the goal is to
-> submit jobs through the Higgsfield MCP.
+> submit jobs through the selected ComfyUI or Higgsfield provider.
 >
 > **Read order for reference files:** Before starting Phase 2, read
 > `references/cinematography-specification.md`. Before Phase 8, read
@@ -73,7 +72,7 @@ current phase, **STOP** and report the blocker. Do not switch to another image m
 > generation preferences, and asset-pipeline management are required, hand off to the
 > `shot-specifier` skill. That skill takes the scene inventory and reference images
 > produced here as its input. When video generation itself is required, use
-> `video-generator`; this skill does not call Higgsfield directly.
+> `video-generator`; this skill does not submit video-generation jobs directly.
 
 ---
 
@@ -288,7 +287,7 @@ For each recurring visual element, record:
   * Appears in shots/scenes: {S01_SH001, S01_SH003, ...}
   * Reference image requirement: locked in Phase 11
   * Reference file: refs/recurring-elements/{name}/primary.png
-  * Must pass as referenceImagePaths in: {All shots where visible}
+  * Must be supplied as a visual reference in: {All shots where visible}
 ```
 
 **Addition — Reference Image Specification per prop:**
@@ -362,14 +361,15 @@ Create shot tables for each sequence. Use the expanded format from
 Before decomposing each scene into individual shots, establish a **duration budget**:
 
 1. Estimate the total desired screen time for the scene in seconds.
-2. Divide into clips: clips must be 4, 6, or 8 seconds each.
+2. Divide it into one-action clips. Use provisional durations until `shot-specifier`
+   maps them to a selected provider's valid seconds, FPS, and frame grid.
 3. Record the budget before writing individual shot rows — it prevents collapsing
    multi-beat scenes into a single over-stuffed clip.
 
 ```text
 * **Scene duration budget:** {total seconds}
 * **Clip count:** {N clips}
-* **Per-clip targets:** {e.g. SH001: 8s, SH002: 6s, SH003: 4s}
+* **Per-clip targets:** {e.g. SH001: 8s, SH002: 6s, SH003: 5s}
 ```
 
 > **Common error:** SC-11-style launch sequences feel like one shot but contain at least
@@ -388,7 +388,7 @@ Before decomposing each scene into individual shots, establish a **duration budg
 | **Audio bed / notes** | What we hear; drops; motifs |
 | **Narrative function** | Why this shot exists |
 | **Continuity flags** | Constraints to maintain |
-| **Duration** | 4 / 6 / 8 seconds |
+| **Duration** | Provisional seconds; finalized against the selected provider/workflow |
 | **Pacing** | slow / moderate / fast |
 | **Clip boundary** | continuous / scene_cut (with next shot) |
 | **Grain / grade note** | Any per-shot override from global cinematography spec |
@@ -398,14 +398,15 @@ Before decomposing each scene into individual shots, establish a **duration budg
 For each shot, also record (these feed Phase 12):
 
 ```text
-* **Start frame:** {Framing + visible content + subject state}
-* **End frame:** {Framing + visible content + subject state}
+* **Start frame:** {Framing + visible content + subject state, or not required}
+* **End frame:** {Framing + visible content + subject state, or not required}
 * **Key frames (if any):** {Intermediate states the interpolation must pass through}
 * **Interpolatable change:** {What changes between start and end — position, pose, state, composition}
 * **End-frame derivation:** edit-from-start / generate-new (see decision table in references/reference-image-guide.md)
 ```
 
-> **[CRITICAL]** The end frame must show **interpolatable change** from the start frame:
+> **[CRITICAL]** When both anchors are planned, the end frame must show
+> **interpolatable change** from the start frame:
 > subject position/pose, subject state, or composition shift. Subtle-only changes
 > (lighting, background) while the subject stays static cause unnatural video motion.
 
@@ -473,11 +474,15 @@ For each location, generate across the scouting matrix:
 
 ### Generation Rules
 
-- Use the nanobanana MCP for every reference-image call and pass
-  `model: gemini-3-pro-image-preview` explicitly.
-- If `gemini-3-pro-image-preview` cannot run the requested operation with the required
-  primary references, character references, or multi-image inputs, **STOP** the
-  workflow and report the unavailable capability. Do not continue with a fallback model.
+- Load `nanobanana` for its provider-aware image workflow. Use Codex built-in
+  `image_gen` by default; use Nano Banana only when the user or project explicitly
+  selects it.
+- For Codex, inspect every local reference with `view_image`, pass local inputs through
+  `referenced_image_paths`, and copy the selected generated output into the required
+  project path. Do not assume imagegen accepts a model or output-path argument.
+- If the selected provider cannot run the requested operation with the required primary,
+  character, or multi-image references, **STOP** and report the unavailable capability.
+  Do not silently switch providers or relax continuity inputs.
 - Every prompt ends with `"no text, no watermarks, no logos, no labels, no annotations"`
 - Additional refs always use the primary ref as a reference image input
 - Prompts for additional angles carry forward the style spec in abbreviated form
@@ -534,21 +539,27 @@ before the prop, recurring visual element, or location reference exists, where t
 independently invents monitor layouts, fixture arrangements, robots, cabinets, or prop
 appearance — producing visibly different objects or set dressing across shots.
 
-For every shot in every sequence, generate:
+For each shot, generate only the frames named by its provisional strategy:
 
-1. **Start frame** — using appropriate character, location, and prop references
-2. **End frame** — derived from start frame (edit or generate, per shot spec)
-3. **Key frames** — any intermediate states specified in the shot list
+1. **Start frame** when image-to-video anchoring or continuity review needs it.
+2. **End frame** when the final composition/state is designed and the likely route can
+   use a last-frame anchor.
+3. **Key frames** only for planned intermediate states or later sub-clip decomposition.
+
+If the video provider is still unknown, a continuity-critical shot should normally keep
+a start frame, while a pure atmosphere/text-to-video shot may carry references without
+a dedicated frame. `shot-specifier` finalizes the provider and required media roles.
 
 ### Start Frame Generation
 
-- **Character-centric shots:** Tool: nanobanana MCP `character_consistency`
-- **Environment or prop-led shots:** Tool: nanobanana MCP `generate_image`
-- Model: `gemini-3-pro-image-preview`
-- `referenceImagePaths` for character-centric shots: character identity reference first,
+- **Character-centric shots:** Generate with identity-preservation instructions and the
+  canonical character reference first.
+- **Environment or prop-led shots:** Generate with the environment or prop reference
+  first.
+- Reference paths for character-centric shots: character identity reference first,
   then the location ref matching lighting/weather, required prop refs, and the style
   anchor when available; include any visible recurring visual element refs
-- `referenceImagePaths` for environment or prop-led shots: location ref matching
+- Reference paths for environment or prop-led shots: location ref matching
   lighting/weather, required prop refs, recurring visual element refs, and the style
   anchor when available; include character refs only if a named character is visible
   and identity must be constrained
@@ -561,9 +572,9 @@ For every shot in every sequence, generate:
 
 **If edit-from-start:**
 
-- Tool: nanobanana MCP `edit_image`
-- Model: `gemini-3-pro-image-preview`
-- `referenceImagePaths`: [start_frame, only the Phase 11 refs needed to describe the
+- Use the selected provider's edit operation. With Codex, inspect the start frame with
+  `view_image` before the edit.
+- References: [start_frame, only the Phase 11 refs needed to describe the
   intended delta]
 - Prompt: "Edit this image: {changes only}" — do NOT repeat unchanged elements
 - Use this path whenever the end frame derives from the start frame; the start frame
@@ -571,8 +582,7 @@ For every shot in every sequence, generate:
 
 **If generate-new:**
 
-- Tool: nanobanana MCP `generate_image`
-- Model: `gemini-3-pro-image-preview`
+- Use the selected provider's generation operation.
 - References: [start_frame (as scene ref), relevant Phase 11 refs]
 - Prompt includes: visual style, end-frame framing + visible content, subject end state, "Same location/environment as reference"
 
@@ -580,22 +590,17 @@ For every shot in every sequence, generate:
 
 For each specified key frame, choose the tool by the frame's dominant continuity risk:
 
-- **Character-centric key frame:** use nanobanana MCP `character_consistency` with
-  `model: gemini-3-pro-image-preview`. Put the character identity reference first in
-  `referenceImagePaths`, followed by start_frame, matching location ref, required prop
-  refs, and style anchor when available.
-- **Environment or prop-led key frame:** use nanobanana MCP `generate_image` with
-  `model: gemini-3-pro-image-preview`. Set `referenceImagePaths` to [start_frame,
-  matching location ref, required prop refs, recurring visual element refs, style anchor
-  when available].
+- **Character-centric key frame:** generate with identity preservation as the primary
+  constraint. Put the character identity reference first, followed by start frame,
+  matching location ref, required prop refs, and style anchor when available.
+- **Environment or prop-led key frame:** generate using [start_frame, matching location
+  ref, required prop refs, recurring visual element refs, style anchor when available].
 - **Key frame derived from the start frame by pose, expression, object state, or minor
-  camera adjustment:** use nanobanana MCP `edit_image` with
-  `model: gemini-3-pro-image-preview`. Set `referenceImagePaths` to [start_frame,
+  camera adjustment:** use the selected provider's edit operation with [start_frame,
   needed Phase 11 refs] and describe only the change.
 
-Do not use `generate_image` for a character-centric key frame just by adding the
-character reference to a mixed reference pool. Use `character_consistency` so identity
-anchoring is the operation's primary constraint.
+For Codex built-in imagegen, identity preservation and multi-image fusion are prompt and
+reference-role instructions rather than separate tool names.
 
 ### File Naming
 
@@ -636,7 +641,7 @@ constraint `shot-specifier` must inject into the affected shot.
 
 After Phase 13 passes with no unresolved BLOCK issues, compile the final scene pack and
 handoff notes for `shot-specifier`. Do not assemble video prompts in this skill. Do not
-choose final video models. Do not flatten prompts. Do not call Higgsfield.
+choose final video models. Do not flatten prompts. Do not submit video jobs.
 
 Compile the final scene inventory document using `templates/scene-inventory-template.md`.
 
@@ -761,8 +766,9 @@ that contains a named prop until that prop's primary reference is locked. Skippi
 produces the category error where the same object — a vehicle, a device, a named weapon —
 looks like a completely different thing in every shot it appears.
 
-**Start and End Frames for Every Shot.** No exceptions. The video model needs both
-anchors to interpolate convincingly.
+**Frames Follow the Planned Strategy.** Generate a start frame, end frame, or both when
+the downstream provider profile requires those anchors. Text-to-video shots may instead
+use references only; start/end routes must have every required anchor before handoff.
 
 **Verify Before Handoff.** Run the consistency pass (Phase 13) before handing off to
 `shot-specifier`. The agent must action the consistency report before handoff: fix

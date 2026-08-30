@@ -84,26 +84,26 @@ each video generation API call — before checking the result.
 
 ### Format
 
-```markdown
-# Generation Log
-
-| Shot ID | Sub-clip | Take | Model | Job ID | Status | Output URL | Local file | File size | Actual resolution | Review | Prompt hash | Notes | Duration seconds | Transition type | Transition duration | Mute generated audio | Forced generated audio | Scene ID | Prompt file | Continuity flags |
-|---------|----------|------|-------|--------|--------|------------|------------|-----------|-------------------|--------|-------------|-------|------------------|-----------------|---------------------|----------------------|------------------------|----------|-------------|------------------|
-| S11_SH001 | A | v1 | seedance_2_0 | b767b7e1-32c6-48cb-821e-ccd260ff638b | completed | https://example.invalid/video.mp4 | generated/S11_SH001/selected.mp4 | 21MB | 1920x1080 | accepted | sha256:abc123 | Consistent subject identity; start/end anchor | 8 | cut | 0 | false | false | SC-11 | prompts/S11_SH001_prompt.md | eyeline;prop reset |
-```
+`video-generator` owns the runtime table and uses
+`skills/video-generator/templates/generation-log.md`. Do not create a narrower
+provider-specific table in `shot-specifier`.
 
 ### Required Fields
 
 - **Shot ID:** From the shot spec
-- **Sub-clip:** `A` for a single clip, or the decomposed sub-clip ID
+- **Sub-clip:** `-` for a non-decomposed clip, or the decomposed sub-clip ID. Use the
+  same value in assembly order for `media-project` matching.
 - **Take:** v1, v2, etc.
+- **Provider:** `comfyui` or `higgsfield`
 - **Model:** Exact model ID used
-- **Job ID:** The UUID returned by the generation API — this is the only retrieval handle
+- **Workflow and hash:** Versioned workflow identity, or `provider-native`
+- **Job ID:** Provider request ID or ComfyUI `prompt_id`
 - **Status:** pending / in_progress / completed / failed
-- **Output URL:** Provider URL returned by the generation API
+- **Output URL:** Remote URL or Comfy output locator when available
 - **Local file:** Project-root-relative downloaded clip path
 - **File Size:** Size of the downloaded local clip, for capacity planning
 - **Actual Resolution:** Pixel dimensions measured from the downloaded clip
+- **FPS, frame count, and codecs:** Values measured from the local clip
 - **Review:** required / optional / accepted / retake / blocked
 - **Prompt hash:** Hash of the submitted generation prompt
 - **Notes:** Any anomalies, quality issues, or decisions made on review
@@ -114,7 +114,8 @@ each video generation API call — before checking the result.
 
 ### Why Job IDs Are Critical
 
-The generation API returns a job ID when a clip is submitted. This ID is the only way
+The provider returns a job ID or `prompt_id` when a clip is submitted. This ID is the
+primary way
 to:
 
 - Retrieve the clip URL after generation completes

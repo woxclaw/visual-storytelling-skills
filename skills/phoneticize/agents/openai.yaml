@@ -1,0 +1,4 @@
+interface:
+  display_name: "Phoneticize"
+  short_description: "Prepare pronunciation-safe narration scripts"
+  default_prompt: "Use $phoneticize to find pronunciation risks and produce a reviewed phoneticized narration script."

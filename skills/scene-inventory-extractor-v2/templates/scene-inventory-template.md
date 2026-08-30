@@ -268,7 +268,7 @@ appear in more than two shots and would be noticeable if redesigned.
   * **Appears in shots/scenes:** {S01_SH001, S01_SH003, ...}
   * **Reference image requirement:** locked in Phase 11
   * **Reference file:** refs/recurring-elements/{name}/primary.png
-  * **Must pass as referenceImagePaths in:** {All shots where visible}
+  * **Must be supplied as a visual reference in:** {All shots where visible}
 
 ---
 

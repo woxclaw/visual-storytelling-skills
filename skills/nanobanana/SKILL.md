@@ -1,90 +1,117 @@
 ---
 name: nanobanana
-description: "Craft high-precision prompts and edit instructions for Nano Banana image workflows, especially when using the local nanobanana MCP tools for generation, editing, character consistency, or multi-image fusion. Use when the task needs structured prompts, reference-role assignment, layout-heavy image specs, typography-heavy images, iterative edit-first refinement, or reliable model/aspect/output-path choices."
+description: >
+  Generate or edit visual-storytelling reference images, style anchors, and storyboard
+  frames with continuity-aware prompts. Use Codex built-in image generation by default;
+  use Nano Banana only when the user or project explicitly selects it. Handles local
+  references, edit invariants, multi-image role assignment, and project-safe outputs.
 ---
 
-# Nanobanana
+# Visual Story Image Generation
 
-Use this skill to turn a vague image request into a prompt that Nano Banana can execute reliably, or to refine an existing image/edit request without restarting from scratch.
+This skill keeps its historical `nanobanana` name for compatibility, but it is
+provider-aware. Shape the image request once, then execute it through the selected image
+provider without leaking provider-specific fields into scene or shot manifests.
 
-## Workflow
+## Provider selection
 
-1. Identify the operation first.
+1. Use Codex's built-in `image_gen` capability by default.
+2. Use the Nano Banana MCP only when the user explicitly asks for Nano Banana or the
+   project manifest names `image_provider: nanobanana`.
+3. Do not silently switch providers after a failure. Report the failed capability and
+   ask before using another provider.
 
-- `generate`: create a new image from text and optional references.
-- `edit`: modify an existing image while preserving specified elements.
-- `character_consistency`: keep one character stable across scenes.
-- `multi_image_fusion`: combine several references into one coherent result.
+The provider changes execution mechanics, not the creative prompt or continuity rules.
 
-1. Choose the lowest-complexity prompt shape that fits the ask.
+## Shared workflow
 
-- Use a short natural-language prompt for simple scenes.
-- Use a structured block for multi-part layouts, infographics, or scene logic.
-- Use JSON-like structure when the user needs many simultaneous constraints or multiple reference roles.
+1. Classify the operation as new generation or edit.
+2. Assign every input image one role: identity, pose/action, environment, prop,
+   recurring element, style, edit target, or compositing input.
+3. Use the smallest complete reference set. Do not pass every project image.
+4. Build prompts in this order: subject, action/state, setting, composition,
+   lighting/mood, style/materiality, then constraints and invariants.
+5. For edits, list what must remain unchanged before describing the delta.
+6. Generate one distinct asset per call. Variants of the same asset may share a prompt,
+   but different characters, locations, props, or frames need separate calls.
+7. Inspect the result for identity, layout, prop, lighting, text, and negative-constraint
+   fidelity. Iterate with one targeted change at a time.
+8. Save project-bound finals at the project path requested by the calling skill. Never
+   overwrite an existing asset unless the user explicitly requested replacement.
 
-1. Build the prompt in this order.
+For reusable prompt structures, read
+[references/frameworks.md](./references/frameworks.md). For production examples, read
+[references/examples.md](./references/examples.md).
 
-- Subject: who or what must appear.
-- Action/state: what is happening.
-- Setting: where it is happening.
-- Composition: framing, camera angle, spatial layout.
-- Lighting/mood: time of day, light direction, contrast, atmosphere.
-- Style/materiality: photoreal, editorial, infographic, matte acrylic, film grain, etc.
-- Constraint layer: exact text, counts, positions, identity preservation, what must remain unchanged.
+## Codex built-in image generation
 
-1. Prefer positive, explicit constraints.
+Use the built-in `image_gen` tool for generation, editing, multi-reference composition,
+and identity-sensitive variants.
 
-- Say what should be present and how it should behave.
-- For edits, explicitly state what must remain unchanged.
-- For text rendering, quote exact text and specify placement plus typographic character.
+- For a new image without references, omit both reference-selection mechanisms.
+- Before using a local image as an edit target or reference, inspect it with
+  `view_image`.
+- When every required input is a local file, pass the smallest complete set through
+  `referenced_image_paths`.
+- When required inputs exist only as recent conversation images, use
+  `num_last_images_to_include` with the smallest value that includes them all.
+- Never provide both `referenced_image_paths` and `num_last_images_to_include`.
+- Built-in imagegen has no separate `character_consistency` or `multi_image_fusion`
+  operation. Express identity preservation, reference roles, and compositing intent in
+  the prompt and provide the relevant images together.
+- Do not assume an output-path or model argument exists. Generate first, then move or
+  copy the selected result from Codex's generated-images location into the project.
+- Preserve edits non-destructively with a versioned sibling filename unless replacement
+  was explicitly requested.
 
-1. Use edit-first iteration.
+For a derived storyboard frame, state invariants explicitly, for example:
 
-- If the first output is close, preserve the successful parts and request only the delta.
-- Example: `Keep composition, subject identity, and wardrobe identical; shift lighting to golden hour and replace background with a foggy bridge.`
+```text
+Keep the character identity, wardrobe, location geometry, prop design, lighting
+direction, palette, and aspect ratio unchanged. Change only the subject position and
+camera framing described below.
+```
 
-## Local MCP Rules
+## Nano Banana MCP
 
-- `mcp__nanobanana__generate_image` is for new images.
-- `mcp__nanobanana__edit_image` is for targeted changes to an existing image.
-- `mcp__nanobanana__character_consistency` is for repeated scenes with one character reference.
-- `mcp__nanobanana__multi_image_fusion` is for combining several references.
-- `output_path` must stay inside the tool's allowed repo-local output area. In practice, use a simple filename or relative path; do not pass an absolute path outside `image_out`.
-- Every image-generation or image-editing MCP call must explicitly pass
-  `model: gemini-3-pro-image-preview`.
-- Pass image inputs through `referenceImagePaths` with the smallest complete set of
-  references for the operation. Do not throw every available reference into a general
-  pool; assign only the location, prop, style, and character anchors that constrain the
-  current frame.
-- If `gemini-3-pro-image-preview` is unavailable, rejected by the tool, or cannot
-  accept the required reference images, character-consistency images, or
-  multi-image-fusion inputs for the requested operation, stop the workflow and report
-  the blocker. Do not fall back to another image model.
+When Nano Banana is the selected provider, inspect the live MCP schema before calling
+it. Map the shared intent to the available operations, commonly:
 
-## Model Selection
+- `generate_image` for new images;
+- `edit_image` for targeted changes;
+- `character_consistency` for identity-led variants;
+- `multi_image_fusion` for combining references.
 
-- Use `gemini-3-pro-image-preview` for all Nano Banana image workflows, including
-  generation, editing, character consistency, and multi-image fusion.
-- Do not choose a speed, aspect-ratio, or fast-iteration fallback model. If the required
-  image operation cannot run on `gemini-3-pro-image-preview`, stop and surface the
-  exact limitation.
+Use the live parameter names. `referenceImagePaths`, `output_path`, and a particular
+Gemini model ID are Nano-specific implementation details, not project-manifest fields.
+If the manifest pins a model, require that exact model; otherwise choose from the live
+schema and record the resolved model. Keep output paths within the MCP's allowed local
+output area, then copy the accepted asset into the project if necessary.
 
-## Prompting Patterns
+## Prompt rules
 
-- For simple generation, use the formula in [references/frameworks.md](./references/frameworks.md).
-- For structured scene blueprints, multi-reference prompts, and edit instructions, use [references/frameworks.md](./references/frameworks.md).
-- For reusable prompt skeletons across posters, product shots, infographics, floor plans, storyboards, and character scenes, use [references/examples.md](./references/examples.md).
+- Prefer concrete visual constraints over decorative synonyms.
+- Quote exact text and specify placement and typographic character.
+- For counts, grids, rows, layouts, labels, or room sizes, state them numerically and
+  spatially.
+- End continuity plates and storyboard prompts with the project's artefact constraints,
+  normally `no text, no watermarks, no logos, no labels, no annotations`.
+- For recurring characters, keep one canonical identity reference and reuse it. A prior
+  in-style storyboard frame may supplement, but should not silently replace, the
+  canonical reference.
+- For additional location or prop variants, explicitly bind geometry and identity to
+  the primary reference and describe only the changed angle, condition, or state.
 
-## Guardrails
+## Deliverables
 
-- Do not overstuff the prompt with decorative synonyms when concrete constraints will do.
-- For exact counts, rows, layouts, labels, or room sizes, state them numerically and spatially.
-- For reference images, assign each image a job such as identity, pose, style, lighting, or environment.
-- For text-heavy images, keep each required text string short unless the user explicitly needs a dense poster or infographic.
-- When an example from the source material is unsafe, irrelevant, or too verbose for direct reuse, extract the pattern and rewrite it into a safe, shorter template rather than copying it.
+For every generated project asset, record:
 
-## Deliverable Style
+- provider and resolved model when exposed;
+- final project-local path;
+- prompt or prompt hash;
+- reference paths and their roles;
+- whether the operation was generation or edit;
+- any unresolved continuity warning.
 
-- If the user asks for an image, provide a prompt plus suggested model, aspect ratio, and any reference-role mapping.
-- If the user asks for an edit, provide the preservation constraints first, then the requested changes.
-- If the user asks for multiple options, vary composition and lighting before varying everything else.
+If only a prompt was requested, return the prompt and reference-role mapping without
+calling an image provider.

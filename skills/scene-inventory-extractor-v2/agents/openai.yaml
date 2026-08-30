@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scene Inventory Extractor"
+  short_description: "Build continuity-first visual story assets"
+  default_prompt: "Use $scene-inventory-extractor-v2 to turn this narrative into a continuity-checked scene pack and reference-image plan."

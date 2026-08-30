@@ -36,7 +36,7 @@ Complete once per scene before writing individual shot specs.
 **Camera mount:** {tripod / Steadicam / handheld / crane / drone gimbal}
 **Camera motion:** {static / pan left-right / tilt up-down / dolly forward-back /
                     arc CW-CCW / rise-fall / zoom in-out}
-**Duration:** {4 / 6 / 8} seconds
+**Duration:** {provisional or provider-validated seconds}
 **Pacing:** {slow / moderate / fast}
 **Clip boundary (next):** {continuous / scene_cut}
 **Grain / grade override:** {override description or "global spec"}
@@ -45,8 +45,8 @@ Complete once per scene before writing individual shot specs.
 ### Frame Roles
 
 ```text
-**Start frame ref:** {Ref ID or "generate-new in Phase 5"}
-**End frame ref:** {Ref ID or "generate-new in Phase 5"}
+**Start frame ref:** {Ref ID / "generate-new in Phase 5" / "not required"}
+**End frame ref:** {Ref ID / "generate-new in Phase 5" / "not required"}
 **Key frames required:** {Yes — N frames / No}
 **End frame derivation:** {edit-from-start / generate-new}
 **Interpolatable change:** {What changes between start and end}
@@ -119,7 +119,7 @@ music=off; narration=off; source={generated/none/supplied}; preserve_silence={tr
 [ACTION] {2–4 sentences: subject appearance, movement, state changes, existence statements}
 [SUBJECT] {Key visual features for consistency}
 [AUDIO] {From audio direction above}
-[DURATION] {4 / 6 / 8 seconds}
+[DURATION] {provider-validated seconds and frame count when known}
 ```
 
 ### Audio Generation Preferences
@@ -144,8 +144,14 @@ references/model-routing.md. This is the exact prompt for video-generator.}
 ### Model Routing
 
 ```text
+**Provider:** {comfyui / higgsfield}
 **Recommended model:** {model ID}
+**Workflow profile:** {versioned workflow path/profile or "provider-native"}
+**Generation strategy:** {text_to_video / image_to_video / start_end_image /
+reference_to_video / multi_shot / motion_control}
 **Routing rationale:** {1 sentence}
+**FPS:** {provider/workflow-native or desired value}
+**Frame count:** {resolved valid count or "resolve during provider validation"}
 **Resolution parameter:** {720p / 1080p / 4K / model-specific equivalent}
 **Model overrides:** {key=value list; include audio, mode/quality, cfg/guidance, genre}
 **Count:** {1 by default; 2 only when review-gated and schema-supported}

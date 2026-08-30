@@ -65,10 +65,10 @@ path exists from local frame files to accepted MCP media inputs.
 
 ## Generation Log
 
-Write `generated/generation_log.md`:
-
-| Shot ID | Sub-clip | Take | Model | Job ID | Status | Output URL | Local file | File size | Actual resolution | Review | Prompt hash | Notes | Duration seconds | Transition type | Transition duration | Mute generated audio | Forced generated audio | Scene ID | Prompt file | Continuity flags |
-|---------|----------|------|-------|--------|--------|------------|------------|-----------|-------------------|--------|-------------|-------|------------------|-----------------|---------------------|----------------------|------------------------|----------|-------------|------------------|
+Write `generated/generation_log.md` using
+`../templates/generation-log.md`. Set `Provider` to `higgsfield`, use the returned MCP
+request identifier as `Job ID`, and set `Workflow` to `provider-native` unless the live
+surface exposes a more precise route name.
 
 Append a row as soon as the Higgsfield MCP video tool returns a job ID, request ID, or
 job-set ID. Update the row while polling.
@@ -163,11 +163,11 @@ limits but do not publish a per-call MCP `count` contract.
 
 ## Media-Project Handoff
 
-When all required takes are selected, run the OpenShot packager from
-`tools/media-project`:
+When all required takes are selected, use the system-installed OpenShot packager as
+defined by the `media-project` skill:
 
 ```bash
-uv run media-project package-openshot \
+media-project package-openshot \
   --project-root /path/to/story-project \
   --assembly-order generated/assembly_order.md \
   --generation-log generated/generation_log.md \

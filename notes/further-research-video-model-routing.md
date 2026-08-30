@@ -12,6 +12,38 @@ first-pass heuristics. This document sets out what needs to be tested and why.
 
 ---
 
+## TODO / Backlog
+
+### Make the skills Codex- and ComfyUI-compatible
+
+- [x] Add a Codex image-generation adapter. The image-producing phases must
+  support the built-in Codex `image_gen` capability instead of requiring the
+  Nano Banana MCP, `referenceImagePaths`, `output_path`, or the
+  `gemini-3-pro-image-preview` model. Cover local-reference inspection with
+  `view_image`, non-destructive saves, and copying project-bound outputs into
+  the story project.
+- [x] Add a local ComfyUI provider adapter with capability discovery and a
+  versioned workflow contract. Map still-image generation/editing to the
+  installed image workflows and map video generation to ComfyUI API-format
+  graphs (or the `comfy run` UI-to-API conversion), rather than to Higgsfield
+  model IDs or MCP media handles.
+- [ ] Implement and test the ComfyUI queue lifecycle: submit an API-format
+  graph to `/prompt`, monitor `/ws` or `/history/{prompt_id}`, retrieve files
+  through `/view`, and record prompt IDs, workflow versions, output paths,
+  seeds, and probe metadata in the generation log.
+- [ ] Validate an end-to-end local profile against the ComfyUI instance in
+  `/home/miranda/ComfyUI`: MiniMax H3 text-to-video, image-to-video, and
+  reference-to-video workflows; LTX-2.3 text/image/first-last-frame workflows;
+  and the installed Z-Image-Turbo still-image workflows. Record actual model
+  files, dimensions, frame rates, duration limits, audio behavior, and VRAM
+  requirements instead of assuming Higgsfield limits.
+- [ ] Define one provider-neutral shot manifest and a capability matrix for
+  reference images, first/last frames, audio, duration, resolution, batching,
+  cancellation, resume, and output retrieval. Keep Higgsfield and ComfyUI
+  mappings as separate adapters and add fixtures for each provider.
+
+---
+
 ## Models to Evaluate
 
 Test against all models currently available via the Higgsfield MCP:

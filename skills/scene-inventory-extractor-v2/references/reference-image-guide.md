@@ -305,44 +305,38 @@ Identify and collect:
 - Recurring visual element reference(s) for any visible fixtures, layouts, interfaces,
   machinery, or set-dressing elements that appear in more than two shots
 
-Hard stop before any frame generation: if `gemini-3-pro-image-preview` is unavailable
-through nanobanana MCP, or if any continuity-critical `referenceImagePaths` are missing,
-abort immediately. Continuity-critical references include character identity refs,
-location refs, required prop refs, recurring visual element refs, and style anchors
-when the shot depends on them. Do not fall back to another model or relax reference
-constraints. `scene-inventory-extractor-v2` must produce the scene pack, continuity
-inventory, prompt keyword library, recurring visual element definitions, and reference
-images before handing off to `shot-specifier`.
+Load the provider-aware `nanobanana` skill. Use Codex built-in imagegen unless the user
+or project explicitly selects another provider. Hard stop when any continuity-critical
+reference is missing or the selected provider cannot accept the smallest complete
+reference set. Do not switch providers or relax reference constraints silently.
+Continuity-critical references include character identity refs, location refs, required
+prop refs, recurring visual element refs, and style anchors when the shot depends on
+them.
 
 ### Step 2: Generate Start Frame
 
-- Tool:
-  - `character_consistency` for character-centric shots
-  - `generate_image` for environment or prop-led shots
-- Model: `gemini-3-pro-image-preview`
-- `referenceImagePaths`:
+- Operation:
+  - identity-preserving generation for character-centric shots
+  - ordinary generation for environment or prop-led shots
+- Reference paths:
   - Character-centric: [character identity ref, location ref, required prop refs, style
     anchor when available, recurring visual element refs when visible]
   - Environment or prop-led: [location ref, required prop refs, recurring visual element
     refs, style anchor when available], adding character refs only for visible named
     characters whose identity must be constrained
-- Before calling nanobanana MCP, verify `gemini-3-pro-image-preview` availability and
-  validate every listed continuity-critical `referenceImagePaths` entry exists.
+- With Codex, inspect local references with `view_image`, pass them through
+  `referenced_image_paths`, generate, then copy the selected output to the target path.
 - Prompt: see §6 Shot Frame Prompts — Start frame
 - Save as `shot_{shot_id}_start.png`
 
 ### Step 3: Generate End Frame
 
 - Determine edit or generate from §7 decision table
-- If **edit**: Tool nanobanana MCP `edit_image`; model
-  `gemini-3-pro-image-preview`; `referenceImagePaths` [start_frame + only refs needed
-  for the described change]
-- If **generate**: Tool nanobanana MCP `generate_image`; model
-  `gemini-3-pro-image-preview`; `referenceImagePaths` [start_frame + location ref +
-  required prop refs + recurring visual element refs + style anchor when available]
-- Before calling nanobanana MCP, verify `gemini-3-pro-image-preview` availability and
-  validate every listed continuity-critical `referenceImagePaths` entry exists.
-- End frames derived from start frames should use `edit_image` so character, location,
+- If **edit**: use the selected provider's edit operation with [start_frame + only refs
+  needed for the described change]. With Codex, inspect the start frame first.
+- If **generate**: use ordinary generation with [start_frame + location ref + required
+  prop refs + recurring visual element refs + style anchor when available].
+- End frames derived from start frames should use an edit so character, location,
   prop, and style consistency inherit from the start frame naturally.
 - Save as `shot_{shot_id}_end.png`
 
@@ -350,20 +344,18 @@ images before handing off to `shot-specifier`.
 
 For each key frame in order:
 
-- Tool:
-  - `character_consistency` for character-centric key frames
-  - `generate_image` for environment or prop-led key frames
-  - `edit_image` when the key frame is derived from the start frame by a limited pose,
+- Operation:
+  - identity-preserving generation for character-centric key frames
+  - ordinary generation for environment or prop-led key frames
+  - edit when the key frame is derived from the start frame by a limited pose,
     expression, object-state, or camera-position change
-- Model: `gemini-3-pro-image-preview`
-- `referenceImagePaths`:
+- Reference paths:
   - Character-centric: [character identity ref, start_frame, matching location ref,
     required prop refs, recurring visual element refs, style anchor when available]
   - Environment or prop-led: [start_frame, matching location ref, required prop refs,
     recurring visual element refs, style anchor when available]
   - Edit-derived: [start_frame, only refs needed for the described change]
-- Before calling nanobanana MCP, verify `gemini-3-pro-image-preview` availability and
-  validate every listed continuity-critical `referenceImagePaths` entry exists.
+- Validate every listed continuity-critical reference path before the call.
 - Prompt: intermediate state description
 - Save as `shot_{shot_id}_key{NN}.png`
 

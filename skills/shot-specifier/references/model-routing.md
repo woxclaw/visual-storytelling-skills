@@ -13,12 +13,11 @@ This file is the single source of truth for creative model routing and prompt sh
 - reference-priority intent;
 - manifest intent fields emitted by `shot-specifier`.
 
-`skills/video-generator/references/model-routing.md` is the execution-facing companion.
-It owns live Higgsfield MCP schema validation, exact provider model IDs, runtime default
-overrides, empirical output constraints, file-size checks, and actual-resolution checks.
-If routing guidance changes, update this file first; update the `video-generator`
-reference in the same commit only when executable constraints or parameter mappings also
-change.
+`skills/video-generator/references/model-routing.md` is the Higgsfield execution-facing
+companion. `skills/video-generator/references/comfyui.md` owns ComfyUI workflow
+validation and execution. Exact model files, node inputs, runtime defaults, empirical
+output constraints, and actual pixels are provider-runtime facts rather than creative
+routing facts.
 
 > **Scope and confidence note**
 > This routing guidance synthesises current official documentation, creator tests,
@@ -35,7 +34,33 @@ change.
 
 ---
 
-## Top-Line Synthesis
+## Provider Routing
+
+Select a provider before selecting a model. Obey an explicit user or project choice.
+When no provider is pinned, prefer a reachable local ComfyUI route if capability
+discovery proves that it satisfies the shot; otherwise request a provider decision.
+Never infer that a workflow works merely because a model file exists.
+
+| Need | Preferred local ComfyUI profile | Higgsfield alternative |
+| --- | --- | --- |
+| Text-led shot without frame anchors | MiniMax H3 text-to-video or LTX-2.3 text-to-video | Provider route supporting text-to-video |
+| Animate a designed first frame | MiniMax H3 image-to-video or LTX-2.3 image-to-video | Seedance/Kling image-to-video |
+| Designed first and last composition | LTX-2.3 first/last-frame or verified H3 image-to-video with both inputs | Seedance/Kling start/end route |
+| Multiple image/video/audio references | MiniMax H3 reference-to-video | Seedance multimodal or Kling Elements/Motion Control when exposed |
+| Native audiovisual generation | Verified H3 or LTX audio/video workflow | Seedance/Kling native audio route |
+
+For ComfyUI, put a versioned workflow path/profile in the manifest and validate its
+nodes, models, input binding, FPS, frame grid, audio path, and `SaveVideo` output before
+finalizing the row. Known local families include MiniMax H3 text/image/reference video
+and LTX-2.3 text/image/first-last-frame workflows, but live discovery is authoritative.
+
+MiniMax H3 commonly operates at 24 FPS and a frame grid shaped like `17k + 5`; LTX
+workflows use their own frame rules. Record desired seconds, submitted frames, and
+effective duration instead of forcing all routes into 4/6/8-second buckets.
+
+---
+
+## Higgsfield Evidence Synthesis
 
 Three findings matter most for this production.
 
@@ -89,7 +114,7 @@ material. Route only when a separate evidence pass has been completed.
 
 ---
 
-## Shot-Type Routing
+## Higgsfield Shot-Type Routing
 
 | Shot type | Primary | Secondary / fallback | Confidence | Working rule |
 |-----------|---------|---------------------|------------|--------------|
@@ -189,6 +214,21 @@ Use only when the manifest explicitly approves a Higgsfield DoP/Cinema route and
 MCP schema exposes it. Start with how the image evolves from the start frame, then camera
 treatment, endpoint, environment motion, and style. Keep action simple and do not add
 new identity details unsupported by references.
+
+#### ComfyUI Workflow Flattening
+
+Use only after the manifest names a validated workflow profile.
+
+1. Start with the action and temporal progression the workflow must generate.
+2. Add subject identity and continuity constraints not already carried by frames or
+   references.
+3. Add camera behavior, framing, environment, and negative constraints.
+4. Add compact style and filmstock language last.
+5. Add audio intent only when the workflow has a verified audio path.
+6. For MiniMax H3 reference-to-video, align `<Picture N>`, `<Video N>`, and `<Audio N>`
+   tags with the workflow's ordered reference lists.
+7. Do not claim a start or end anchor when that workflow input is absent. Do not mention
+   unsupported media roles in prompt prose as if that supplied the missing media.
 
 #### Unapproved / Unknown Routes
 

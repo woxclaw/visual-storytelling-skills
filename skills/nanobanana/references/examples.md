@@ -1,4 +1,4 @@
-# Nano Banana Prompt Patterns and Examples
+# Visual Story Image Prompt Patterns and Examples
 
 Use these as short starting points. Expand only the parts the user actually cares about.
 
@@ -158,5 +158,7 @@ Preserve all major spatial relationships and object counts.
 ## Notes
 
 - Start with the shortest prompt that can still encode the real constraints.
-- For local MCP usage, pair the prompt with explicit `model`, `aspectRatio`, and `output_path`.
+- Keep provider execution fields out of the creative prompt. Codex built-in imagegen
+  does not take a project output path; copy the accepted result into the project after
+  generation. For an explicitly selected MCP, use only fields exposed by its live schema.
 - Prefer safe, reusable templates over copying long source prompts verbatim.
