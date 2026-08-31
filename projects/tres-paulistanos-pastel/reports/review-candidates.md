@@ -64,3 +64,10 @@ These are review cuts, not publish-ready masters: the Portuguese stems still nee
 
 - `generated/minimax-h3-turbo-proof/394a7237_000.mp4` — 5.17 s, 864 × 480, H.264 + stereo AAC.
 - `workflows/minimax-h3-turbo-t2v-proof.json` — verified custom `MiniMaxH3TurboLoRA` and `MiniMaxH3TurboSampler` path, 8 steps, `simple` scheduler, runtime-confirmed in the ComfyUI journal.
+
+## MiniMax H3 Turbo movie
+
+- `generated/review-cuts/tres-paulistanos-pastel-minimax-h3-turbo-review.mp4` — 15.53 s, 864 × 480, H.264 + stereo AAC; concatenates the three full Turbo testimonial clips.
+- Source clips: `generated/minimax-h3-turbo-full/e135448e_000.mp4` (Claire/Bixiga), `45beab1f_000.mp4` (Luciana/Praça da Sé), and `c92ce0d4_000.mp4` (Rafael/MASP).
+
+The H3 Turbo movie is a model-rendered review cut with native generated ambience/audio. It is separate from the editorial Portuguese-stem mux; exact spoken-word Portuguese still requires the approved pickup stems.
