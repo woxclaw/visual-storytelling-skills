@@ -44,3 +44,4 @@ submitted_at	provider	shot	workflow_sha256	prompt_id	status	output	probe
 2026-08-31T09:10:20-03:00	Wan-2.2-5B	S02_SH001	be37ca889b1e2efe81defe50d470921dcc63031390b5030a529dd657bd9308f5	9493aa16-8afc-4eea-94c4-63756328e4f8	queued		corrected positive-only Sé geography
 2026-08-31T09:10:20-03:00	Wan-2.2-5B	S02_SH002	1f8dcd679f6fc66c4ead2e0148445335d69f78ba2489edf9e5c8e84611da6c3f	5095e0ef-37b4-44b1-b694-b64f96fe9b85	queued		corrected moss-green portrait
 2026-08-31T09:10:20-03:00	Wan-2.2-5B	S02_SH003	5a32d4ebd0775a86ad4a93d7111c8145b141f6304f8b6b686f85e1796de4411a	481eec39-1f5d-4cd7-a3b7-93db335f157d	queued		corrected moss-green insert
+2026-08-31T20:14:55-03:00	MiniMax-H3-Turbo	T2V-PROOF	c8afd78c2e25a61c4e8dc3fa4bb83e4d3380621104c22ffcbc74f9ec8cfb36c7	394a7237-fe53-4c82-b5ae-b4d643dff475	completed-candidate	generated/minimax-h3-turbo-proof/394a7237_000.mp4	custom Turbo LoRA + Turbo sampler; 8 steps; runtime canary verified in journalctl

@@ -51,3 +51,16 @@ to the shared Portuguese stems during editorial assembly.
 
 These are review candidates, not final accepts. Editorial captions and the exact
 fiction/AI disclosure are still to be added after human approval.
+
+## Assembled review movies
+
+- `generated/review-cuts/tres-paulistanos-pastel-ltx-v1-review.mp4` — 42.52 s, H.264 + stereo AAC.
+- `generated/review-cuts/tres-paulistanos-pastel-wan-v1-picture-review.mp4` — 42.50 s, silent picture-only cut.
+- `generated/review-cuts/tres-paulistanos-pastel-wan-v1-dialogue-review.mp4` — 42.50 s, Wan picture with provisional concatenated Portuguese stems.
+
+These are review cuts, not publish-ready masters: the Portuguese stems still need exact-word pickups, and the Wan dialogue is a provisional editorial alignment.
+
+## MiniMax H3 Turbo proof
+
+- `generated/minimax-h3-turbo-proof/394a7237_000.mp4` — 5.17 s, 864 × 480, H.264 + stereo AAC.
+- `workflows/minimax-h3-turbo-t2v-proof.json` — verified custom `MiniMaxH3TurboLoRA` and `MiniMaxH3TurboSampler` path, 8 steps, `simple` scheduler, runtime-confirmed in the ComfyUI journal.
