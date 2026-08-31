@@ -50,3 +50,20 @@ workflow, preserve the first-frame input and audio VAE, insert the two custom no
 above, set `simple` + 4–8 steps, and validate that the submitted API graph contains
 both custom node types. Runtime logs should include the custom pack’s canaries:
 `[MiniMaxH3TurboLoRA]` and `[H3TURBO sampler]`.
+
+## Live verification for this project
+
+After restarting the user-managed `comfyui.service`, ComfyUI `0.33.0` reports both
+custom classes as loaded (`MiniMaxH3TurboLoRA` and `MiniMaxH3TurboSampler`). Available
+LoRAs are:
+
+- `minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors`
+- `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors`
+- `minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors`
+
+For the approved first-frame testimonial shots, use the FL2V 8-step LoRA with
+`MiniMaxH3TurboLoRA.low_vram=false`, `strength=1.0`, `MiniMaxH3TurboSampler`, and
+`BasicScheduler.scheduler=simple`, `steps=8`. This favors clean faces/audio on the
+RTX 4090 while staying inside the node’s documented 4–8 step range. A short 73-frame
+proof should be submitted first; its runtime log must show the H3 Turbo canaries before
+the remaining Portuguese dialogue takes are queued.
