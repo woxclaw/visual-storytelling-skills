@@ -98,6 +98,13 @@ to Nano Banana only when explicitly selected. You can also invoke it directly:
 $nanobanana
 ```
 
+For candid phone-photo, selfie, vlog, or UGC-style capture, apply the social-realism
+prompt profile before image or video execution:
+
+```text
+$social-realism-prompts
+```
+
 ### Overall flow
 
 ```mermaid
@@ -154,6 +161,7 @@ ______________________________________________________________________
 | `seedance-2-deep-dive` | Distils Seedance 2.0 operating guidance: multimodal input planning, reference prioritization, duration and aspect defaults, prompt structure, quality/speed tradeoffs, settings sweeps, and failure triage. |
 | `kling-3-0-deep-dive` | Distils Kling 3.0 operating guidance: scene structure, camera language, Elements, Motion Control, image-to-video anchors, native audio/dialogue, product prompting, settings sweeps, and failure triage. |
 | `nanobanana` | Historical compatibility name for continuity-aware image generation. Uses Codex built-in imagegen by default and Nano Banana only when explicitly selected. |
+| `social-realism-prompts` | Adds coherent candid phone-camera, selfie, vlog, and UGC-style capture direction; can return prompts or execute image generation/edits through Codex imagegen. |
 | `phoneticize` | Detects pronunciation hazards in TTS scripts; suggests phonetic respellings; previews via Eleven v3 fragments; emits a phoneticized script and an archived pronunciation table. |
 
 Image-generation skills must not silently switch providers. Codex built-in imagegen is

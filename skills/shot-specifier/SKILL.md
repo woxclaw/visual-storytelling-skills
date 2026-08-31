@@ -75,7 +75,10 @@ providers.
 > aspect ratio, and generation notes. If Phase 7 routes any shot to `kling3_0`, also
 > load `kling-3-0-deep-dive` before finalizing shot structure, camera motion, Elements
 > or Motion Control references, duration, aspect ratio, audio notes, and generation
-> notes. The asset pipeline conventions are in `references/asset-pipeline.md`.
+> notes. When a shot calls for candid phone footage, a selfie, vlog, camera-roll, or
+> UGC-style realism, load `social-realism-prompts` and incorporate its physically
+> coherent capture direction without weakening continuity constraints. The asset
+> pipeline conventions are in `references/asset-pipeline.md`.
 
 ---
 
@@ -567,6 +570,7 @@ audio-generation preferences, review-gate metadata, and clip-boundary metadata.
 |-------|----------|
 | `scene-inventory-extractor-v2` | Upstream scene inventory, continuity inventory, and reference library are missing |
 | `nanobanana` | Generating or editing storyboard frames and locked references |
+| `social-realism-prompts` | A shot needs candid phone-photo, selfie, vlog, camera-roll, or UGC-style capture direction |
 | `seedance-2-deep-dive` | A shot is routed to `seedance_2_0` and needs Seedance-specific duration, reference, prompt, or troubleshooting guidance |
 | `kling-3-0-deep-dive` | A shot is routed to `kling3_0` and needs Kling-specific shot structure, camera, Elements, Motion Control, audio, product, or troubleshooting guidance |
 | `video-generator` | Prompt manifest, provider/workflow routing, and required media are ready for submission |

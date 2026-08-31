@@ -43,6 +43,9 @@ For reusable prompt structures, read
 [references/frameworks.md](./references/frameworks.md). For production examples, read
 [references/examples.md](./references/examples.md).
 
+When the requested look is candid phone-camera, selfie, vlog, camera-roll, or UGC-style
+realism, load `social-realism-prompts` for capture direction before executing the image.
+
 ## Codex built-in image generation
 
 Use the built-in `image_gen` tool for generation, editing, multi-reference composition,

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Candid Social-Media Realism"
+  short_description: "Create naturalistic phone-photo and vlog media"
+  default_prompt: "Use $social-realism-prompts to make this synthetic image or video feel like plausible candid phone capture."

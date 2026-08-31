@@ -26,6 +26,11 @@ the selected local ComfyUI workflow or Higgsfield MCP schema, binds media, appli
 provider settings and audio preferences, submits jobs, monitors status, retrieves
 clips, updates the generation log, and writes assembly order.
 
+`social-realism-prompts` is an optional capture-style layer for candid phone photos,
+selfies, vlogs, camera-roll images, and UGC-style shots. It shapes physically coherent
+camera and motion cues; `nanobanana` still owns image execution, `shot-specifier` owns
+the shot manifest, and `video-generator` owns video execution.
+
 ```mermaid
 sequenceDiagram
   actor User
